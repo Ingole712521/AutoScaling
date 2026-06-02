@@ -23,7 +23,7 @@ resource "aws_lb_target_group" "mqtt_tg" {
     protocol            = "TCP"
     port                = "1883"
     healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
     interval            = 10
   }
 
@@ -43,12 +43,6 @@ resource "aws_lb_listener" "mqtt_1883" {
   }
 }
 
-resource "aws_lb_target_group_attachment" "core_attachment" {
-  target_group_arn = aws_lb_target_group.mqtt_tg.arn
-  target_id        = aws_instance.emqx_core.id
-  port             = 1883
-}
-
 resource "aws_launch_template" "emqx_replicant_lt" {
   name_prefix   = "${var.project_name}-replicant-"
   image_id      = data.aws_ami.ubuntu_2204.id
@@ -57,45 +51,16 @@ resource "aws_launch_template" "emqx_replicant_lt" {
 
   vpc_security_group_ids = [aws_security_group.emqx_nodes_sg.id]
 
-  user_data = base64encode(<<-EOT
-    #!/bin/bash
-    set -euxo pipefail
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
-    apt-get install -y curl gnupg apt-transport-https ca-certificates lsb-release
-
-    PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-    CORE_IP="${aws_instance.emqx_core.private_ip}"
-
-    curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
-    apt-get update -y
-    apt-get install -y emqx
-
-    cat >> /etc/emqx/emqx.conf <<EOF
-node {
-  name = "emqx@$${PRIVATE_IP}"
-  cookie = "${var.emqx_node_cookie}"
-  role = replicant
-}
-
-cluster {
-  discovery_strategy = static
-  static {
-    seeds = ["emqx@$${CORE_IP}"]
+  iam_instance_profile {
+    name = aws_iam_instance_profile.emqx_ec2.name
   }
-}
 
-dashboard {
-  default_username = "${var.emqx_dashboard_username}"
-  default_password = "${var.emqx_dashboard_password}"
-}
-EOF
+  update_default_version = true
 
-    systemctl enable emqx
-    systemctl restart emqx
-    sleep 15
-  EOT
-  )
+  user_data = base64encode(templatefile("${path.module}/userdata/emqx-bootstrap.sh", merge(local.emqx_bootstrap_base, {
+    node_role        = "replicant"
+    core_instance_id = aws_instance.emqx_core.id
+  })))
 
   tag_specifications {
     resource_type = "instance"
@@ -107,13 +72,13 @@ EOF
 }
 
 resource "aws_autoscaling_group" "emqx_replicants_asg" {
-  name                = "${var.project_name}-replicants-asg"
-  vpc_zone_identifier = aws_subnet.public[*].id
-  min_size            = 1  # Kept at 1 as your sensor base
-  max_size            = 2
-  desired_capacity    = 1
-  health_check_type   = "ELB"
-  health_check_grace_period = 180 # Gives ample time for container download & sleep windows
+  name                      = "${var.project_name}-replicants-asg"
+  vpc_zone_identifier       = aws_subnet.public[*].id
+  min_size                  = var.replicant_min_size
+  max_size                  = var.replicant_max_size
+  desired_capacity          = var.replicant_desired_capacity
+  health_check_type         = "ELB"
+  health_check_grace_period = 600
 
   launch_template {
     id      = aws_launch_template.emqx_replicant_lt.id
@@ -137,22 +102,21 @@ resource "aws_autoscaling_group" "emqx_replicants_asg" {
     }
   }
 
+  depends_on = [
+    aws_instance.emqx_core,
+    aws_ssm_parameter.core_private_ip,
+    aws_ssm_parameter.cluster_seeds,
+  ]
+
   lifecycle {
     create_before_destroy = true
   }
-}
 
-resource "aws_autoscaling_policy" "replicants_target_tracking" {
-  name                   = "${var.project_name}-replicants-target-tracking"
-  autoscaling_group_name = aws_autoscaling_group.emqx_replicants_asg.name
-  policy_type            = "TargetTrackingScaling"
-
-  target_tracking_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ASGAverageNetworkIn"
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 0
+      instance_warmup        = 600
     }
-
-    target_value     = 1000000.0
-    disable_scale_in = false
   }
 }

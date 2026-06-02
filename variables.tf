@@ -76,6 +76,54 @@ variable "emqx_dashboard_password" {
   sensitive   = true
 }
 
+variable "emqx_version" {
+  description = "EMQX DEB package version to install (5.8.x)."
+  type        = string
+  default     = "5.8.9"
+}
+
+variable "replicant_min_size" {
+  description = "Minimum replicant nodes in ASG."
+  type        = number
+  default     = 1
+}
+
+variable "replicant_desired_capacity" {
+  description = "Desired replicant nodes in ASG."
+  type        = number
+  default     = 1
+}
+
+variable "replicant_max_size" {
+  description = "Maximum replicant nodes in ASG."
+  type        = number
+  default     = 4
+}
+
+variable "scale_out_network_target_bytes" {
+  description = "Demo: scale replicants when ASG average network in exceeds this value (bytes/sec). MQTT load triggers this early."
+  type        = number
+  default     = 20000
+}
+
+variable "autoscaling_cooldown_sec" {
+  description = "Cooldown between demo scale actions (seconds)."
+  type        = number
+  default     = 60
+}
+
+variable "scale_out_cpu_threshold" {
+  description = "Backup demo scale-out CPU percent (MQTT rarely hits this; network metric is primary)."
+  type        = number
+  default     = 1
+}
+
+variable "scale_in_cpu_threshold" {
+  description = "Demo scale-in when ASG average CPU is below this percent. Must exceed idle EMQX baseline (~1-2% with multiple nodes)."
+  type        = number
+  default     = 3
+}
+
 variable "tags" {
   description = "Common tags applied to all resources."
   type        = map(string)

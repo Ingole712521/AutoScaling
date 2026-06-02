@@ -53,13 +53,13 @@ resource "aws_security_group" "emqx_nodes_sg" {
     cidr_blocks = [var.ssh_allowed_cidr]
   }
 
-  # THE CULPRIT FIX: Internal Cluster Sync Layer
+  # Internal cluster communication between nodes sharing this security group
   ingress {
-    description = "Allow unconditional backend communication among trusted cluster nodes"
+    description = "Allow inter-node cluster communication within this security group"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    self        = true # Crucial: Allows instances sharing this SG to talk internally
+    self        = true
   }
 
   egress {

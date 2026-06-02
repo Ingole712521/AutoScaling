@@ -60,30 +60,43 @@ project-root/
 
 ## 4) Deployment Steps
 
-1. Go to Terraform root:
+1. Go to project root:
 
-```bash
-cd terraform
+```powershell
+cd "d:\New folder\emqx"
 ```
 
-2. Create tfvars:
+2. Create tfvars (if not already):
 
-```bash
-cp terraform.tfvars.example terraform.tfvars
+```powershell
+copy terraform.tfvars.example terraform.tfvars
 ```
 
-3. Update at least:
+3. Update at least in `terraform.tfvars`:
 - `emqx_node_cookie`
 - `emqx_dashboard_password`
-- `dashboard_allowed_cidr`
+- `dashboard_allowed_cidr` (use your public IP/32 or `0.0.0.0/0` for demo)
 - `ssh_allowed_cidr`
 
-4. Deploy:
+4. **One-command deploy + dashboard + autoscaling load test:**
 
-```bash
+```powershell
+.\scripts\deploy_and_load_test.ps1
+```
+
+This will:
+- run `terraform apply`
+- print dashboard URL, NLB, firewall, and autoscaling info
+- wait until ports **18083** and **1883** are reachable
+- open the dashboard in your browser
+- start the load test in a **new PowerShell window** to push CPU above the threshold
+
+Manual deploy only:
+
+```powershell
 terraform init
-terraform plan
 terraform apply
+.\scripts\run_after_apply.ps1
 ```
 
 ## 5) How EMQX Cluster Works
@@ -100,9 +113,9 @@ terraform apply
 
 ## 7) Auto Scaling Explanation (Demo Thresholds)
 
-- Scale out: CPU > 40% for 2 minutes
-- Scale in: CPU < 15% for 5 minutes
-- Cooldown: 120 seconds
+- Scale out: network in > 20 KB/s **or** CPU > 1% (demo — triggers in stage 1)
+- Scale in: CPU < 3% for 2 minutes (network policy is scale-out only; AWS target-tracking scale-in needs ~15 min)
+- Cooldown: 60 seconds
 - Never scales below 1 replicant
 
 These are intentionally small, interview-friendly thresholds to demonstrate behavior at low cost.
@@ -119,6 +132,49 @@ These are intentionally small, interview-friendly thresholds to demonstrate beha
 - Raise to 15 clients -> scale to 2 replicants
 - Raise to 25 clients -> scale to 3 replicants
 - Lower to 5 clients -> scale in to 1 replicant
+
+Run the staged load test after `terraform apply` to drive this scenario:
+
+```powershell
+# Windows (from project root)
+.\scripts\run_after_apply.ps1
+```
+
+```bash
+# Linux/macOS
+FROM_TERRAFORM=true ./scripts/run_staged_load_test.sh
+```
+
+Or pass the NLB DNS manually:
+
+```powershell
+.\scripts\run_staged_load_test.ps1 -MqttHost "your-nlb.elb.amazonaws.com"
+```
+
+```bash
+MQTT_HOST=your-nlb.elb.amazonaws.com ./scripts/run_staged_load_test.sh
+```
+
+Default load stages (override with `LOAD_STAGES`):
+
+| Stage | Clients | Burst | Est. throughput | Goal |
+|-------|---------|-------|-----------------|------|
+| baseline-heavy | **40** | 10 × 16KB / 1ms | **~6+ GB/s** client-side | trigger network > 20 KB/s immediately |
+| scale-out-2 | **80** | same | higher | scale to 3 nodes |
+| scale-out-3 | **120** | same | higher | scale to 4 nodes |
+| scale-in | **10** | same | low | scale back down |
+
+Default publish settings: **interval=0.001s**, **payload=16384B**, **10 messages/burst**
+
+Tune intensity if scaling is slow:
+
+```powershell
+$env:PUBLISH_INTERVAL = "0.02"   # faster publishes = more CPU
+$env:PAYLOAD_SIZE = "1024"        # larger messages = more load
+.\scripts\run_after_apply.ps1
+```
+
+Watch scaling in AWS Console -> EC2 -> Auto Scaling Groups, or CloudWatch alarm `emqx-prod-replicant-high-cpu`.
 
 ## 10) Monitoring
 

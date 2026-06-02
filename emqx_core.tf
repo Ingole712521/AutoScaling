@@ -1,6 +1,6 @@
 data "aws_ami" "ubuntu_2204" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["099720109477"]
 
   filter {
     name   = "name"
@@ -13,50 +13,31 @@ data "aws_ami" "ubuntu_2204" {
   }
 }
 
+locals {
+  emqx_bootstrap_base = {
+    node_cookie        = var.emqx_node_cookie
+    dashboard_username = var.emqx_dashboard_username
+    dashboard_password = var.emqx_dashboard_password
+    aws_region         = var.aws_region
+    project_name       = var.project_name
+    emqx_version       = var.emqx_version
+  }
+}
+
 resource "aws_instance" "emqx_core" {
   ami                         = data.aws_ami.ubuntu_2204.id
   instance_type               = var.core_instance_type
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.emqx_nodes_sg.id]
   key_name                    = var.key_name
+  iam_instance_profile        = aws_iam_instance_profile.emqx_ec2.name
   associate_public_ip_address = true
+  user_data_replace_on_change = true
 
-  user_data = <<-EOT
-    #!/bin/bash
-    set -euxo pipefail
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
-    apt-get install -y curl gnupg apt-transport-https ca-certificates lsb-release
-
-    PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-
-    curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
-    apt-get update -y
-    apt-get install -y emqx
-
-    cat > /etc/emqx/emqx.conf <<EOF
-node {
-  name = "emqx@$${PRIVATE_IP}"
-  cookie = "${var.emqx_node_cookie}"
-  role = core
-}
-
-cluster {
-  discovery_strategy = static
-  static {
-    seeds = ["emqx@$${PRIVATE_IP}"]
-  }
-}
-
-dashboard {
-  default_username = "${var.emqx_dashboard_username}"
-  default_password = "${var.emqx_dashboard_password}"
-}
-EOF
-
-    systemctl enable emqx
-    systemctl restart emqx
-  EOT
+  user_data = templatefile("${path.module}/userdata/emqx-bootstrap.sh", merge(local.emqx_bootstrap_base, {
+    node_role        = "core"
+    core_instance_id = "self"
+  }))
 
   tags = merge(var.tags, {
     Name = "${var.project_name}-core-1"

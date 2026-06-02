@@ -37,6 +37,22 @@ resource "aws_security_group" "emqx_nodes_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "Allow inbound EMQX dashboard access"
+    from_port   = 18083
+    to_port     = 18083
+    protocol    = "tcp"
+    cidr_blocks = [var.dashboard_allowed_cidr]
+  }
+
+  ingress {
+    description = "Allow SSH troubleshooting access"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_allowed_cidr]
+  }
+
   # THE CULPRIT FIX: Internal Cluster Sync Layer
   ingress {
     description = "Allow unconditional backend communication among trusted cluster nodes"

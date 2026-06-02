@@ -52,6 +52,12 @@ variable "dashboard_allowed_cidr" {
   default     = "0.0.0.0/0"
 }
 
+variable "ssh_allowed_cidr" {
+  description = "CIDR allowed to access SSH on port 22."
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
 variable "emqx_node_cookie" {
   description = "Shared Erlang cookie for EMQX cluster nodes."
   type        = string

@@ -51,7 +51,7 @@ resource "aws_lb_target_group_attachment" "core_attachment" {
 
 resource "aws_launch_template" "emqx_replicant_lt" {
   name_prefix   = "${var.project_name}-replicant-"
-  image_id      = data.aws_ami.amazon_linux_2.id
+  image_id      = data.aws_ami.ubuntu_2204.id
   instance_type = var.replicant_instance_type
   key_name      = var.key_name
 
@@ -60,30 +60,40 @@ resource "aws_launch_template" "emqx_replicant_lt" {
   user_data = base64encode(<<-EOT
     #!/bin/bash
     set -euxo pipefail
-    yum update -y
-    amazon-linux-extras install docker -y
-    systemctl enable docker
-    systemctl start docker
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+    apt-get install -y curl gnupg apt-transport-https ca-certificates lsb-release
 
     PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
     CORE_IP="${aws_instance.emqx_core.private_ip}"
 
-    docker pull emqx/emqx:6.0.0
-    docker rm -f emqx || true
-    
-    # FIX: Using '--network host' removes the container network isolation layer
-    docker run -d --name emqx --restart always --network host \
-      -e EMQX_NODE__ROLE=replicant \
-      -e EMQX_NODE__NAME=emqx@$${PRIVATE_IP} \
-      -e EMQX_CLUSTER__DISCOVERY_STRATEGY=static \
-      -e EMQX_CLUSTER__STATIC__SEEDS="[emqx@$${CORE_IP}]" \
-      -e EMQX_NODE__COOKIE=${var.emqx_node_cookie} \
-      -e EMQX_DASHBOARD__DEFAULT_USERNAME=${var.emqx_dashboard_username} \
-      -e EMQX_DASHBOARD__DEFAULT_PASSWORD=${var.emqx_dashboard_password} \
-      emqx/emqx:6.0.0
+    curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
+    apt-get update -y
+    apt-get install -y emqx
 
-    # Let the internal Erlang application spin up completely before exiting user data
-    sleep 25
+    cat >> /etc/emqx/emqx.conf <<EOF
+node {
+  name = "emqx@$${PRIVATE_IP}"
+  cookie = "${var.emqx_node_cookie}"
+  role = replicant
+}
+
+cluster {
+  discovery_strategy = static
+  static {
+    seeds = ["emqx@$${CORE_IP}"]
+  }
+}
+
+dashboard {
+  default_username = "${var.emqx_dashboard_username}"
+  default_password = "${var.emqx_dashboard_password}"
+}
+EOF
+
+    systemctl enable emqx
+    systemctl restart emqx
+    sleep 15
   EOT
   )
 

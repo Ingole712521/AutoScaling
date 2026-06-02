@@ -1,128 +1,175 @@
-# EMQX AWS Cluster (25k -> 100k users)
+# EMQX on AWS (Interview-Grade Demo)
 
-Production-ready baseline to deploy an EMQX cluster on AWS with:
+Production-style EMQX 5.x cluster on AWS using Terraform modules, native EC2 installation (no Docker), Route53 private DNS discovery, Network Load Balancer, Auto Scaling, and CloudWatch observability.
 
-- Multi-AZ network and private ECS services
-- Network Load Balancer for MQTT/TCP traffic
-- EMQX core + replicant services
-- Autoscaling for replicants
-- CloudWatch logging
-- Optional k6 load test runner
-- Clean Terraform structure split by responsibility
-- ECS on EC2 capacity providers for explicit instance control
+## 1) Architecture Overview
 
-## Architecture
+- Region: `ap-south-1`
+- VPC: `10.0.0.0/16`
+- Public subnets: `10.0.1.0/24`, `10.0.2.0/24`
+- Private subnets: `10.0.11.0/24`, `10.0.12.0/24`
+- Core nodes (fixed): 3 x `t3.medium` (`emqx-core-1..3`)
+- Replicant nodes (ASG): min=1, desired=1, max=4 (`t3.medium`)
+- NLB listeners: `1883` and `8883` TCP
+- Route53 private zone: `emqx.internal`
+- SSM Session Manager and SSH enabled
 
-- EMQX core tasks (default `3`, configurable per phase)
-- `N` EMQX replicant tasks behind autoscaling
-- NLB listeners for MQTT and MQTT over TLS
-- ECS on EC2 using Auto Scaling Group and capacity provider
-- Core-first startup order so replicants join a healthy cluster
-- Autoscaling-safe ECS config (`desired_count` drift ignored in Terraform)
+Mermaid diagram: see [`docs/architecture.md`](docs/architecture.md).
 
-## Prerequisites
+## 2) AWS Services Used
 
-- AWS account and credentials configured
-- Terraform `>= 1.5`
-- AWS CLI `>= 2.x`
-- (Optional) k6 for external load generation
+- EC2
+- Auto Scaling Group
+- Network Load Balancer
+- VPC / Subnets / NAT Gateway / Route Tables
+- Route53 Private Hosted Zone
+- IAM (least privilege for SSM/CWAgent/Route53 read)
+- CloudWatch Dashboard + Alarms
+- Systems Manager (Session Manager)
 
-## Quick Start (Single Go)
+## 3) Project Structure
 
-1. Copy and edit variables:
+```text
+project-root/
+  terraform/
+    main.tf
+    providers.tf
+    versions.tf
+    variables.tf
+    outputs.tf
+    terraform.tfvars.example
+    modules/
+      vpc/
+      security-groups/
+      iam/
+      route53/
+      nlb/
+      emqx-core/
+      emqx-replicant/
+      autoscaling/
+      cloudwatch/
+      keypair/
+  userdata/
+    core.sh
+    replicant.sh
+  frontend/
+    nextjs-dashboard/
+  docs/
+    architecture.md
+```
+
+## 4) Deployment Steps
+
+1. Go to Terraform root:
+
+```bash
+cd terraform
+```
+
+2. Create tfvars:
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Make sure to change at least:
-- `emqx_dashboard_password`
+3. Update at least:
 - `emqx_node_cookie`
+- `emqx_dashboard_password`
+- `dashboard_allowed_cidr`
+- `ssh_allowed_cidr`
 
-2. Initialize and deploy:
+4. Deploy:
 
 ```bash
 terraform init
-terraform apply -auto-approve
+terraform plan
+terraform apply
 ```
 
-3. Get MQTT endpoint:
+## 5) How EMQX Cluster Works
+
+- Core nodes boot first and run native EMQX service.
+- Each core node has a DNS identity in `emqx.internal`.
+- Replicant nodes scale via ASG and use the same seed list for join.
+- Replicants serve client traffic; cores coordinate metadata/session routing.
+
+## 6) Core vs Replicant Explanation
+
+- **Core nodes (fixed 3):** stable control-layer for cluster metadata and coordination.
+- **Replicant nodes (1-4):** client-facing data lane that scales up/down automatically.
+
+## 7) Auto Scaling Explanation (Demo Thresholds)
+
+- Scale out: CPU > 40% for 2 minutes
+- Scale in: CPU < 15% for 5 minutes
+- Cooldown: 120 seconds
+- Never scales below 1 replicant
+
+These are intentionally small, interview-friendly thresholds to demonstrate behavior at low cost.
+
+## 8) Load Balancer Explanation
+
+- NLB receives MQTT traffic on `1883` and `8883`.
+- Target groups forward traffic only to replicant instances.
+- Health checks use TCP on `1883`.
+
+## 9) Demo Scenario
+
+- Start: 5 clients -> 1 replicant
+- Raise to 15 clients -> scale to 2 replicants
+- Raise to 25 clients -> scale to 3 replicants
+- Lower to 5 clients -> scale in to 1 replicant
+
+## 10) Monitoring
+
+CloudWatch dashboard includes:
+- ASG CPU
+- NLB traffic metrics
+- ASG in-service and desired capacity
+- Memory metric via CWAgent
+
+Alarms included:
+- High CPU
+- NLB unhealthy hosts
+- ASG in-service too low
+
+## 11) Frontend Demo Dashboard
+
+Path: `frontend/nextjs-dashboard`
+
+Run:
 
 ```bash
-terraform output mqtt_endpoint
+cd frontend/nextjs-dashboard
+npm install
+npm run dev
 ```
 
-4. Point devices/clients to the NLB DNS on port `1883` (or `8883` for TLS).
+This dashboard is a presentation UI with mock API data for interview storytelling.
 
-## Phased Rollout (Recommended)
+## 12) Terraform Best Practices Applied
 
-This project uses **ECS on EC2**, so you can control instance type and count.
-Use phased capacity files:
+- Module-per-domain architecture
+- Inputs/outputs with no hardcoded sensitive values
+- Shared tags and naming conventions
+- Dedicated user-data templates
+- Least-privilege IAM policy attachments
+- Reusable networking and security layers
 
-```bash
-terraform apply -var-file="environments/phase1.tfvars" -auto-approve
-```
+## 13) Estimated Cost (Demo)
 
-After Phase 1 tests pass, scale up:
+Approximate (short-lived demo, ap-south-1):
+- 3 x `t3.medium` cores
+- 1-4 x `t3.medium` replicants (typically 1 in idle)
+- NAT gateway + data processing
+- NLB hourly + LCUs
+- CloudWatch metrics/logs
 
-```bash
-terraform apply -var-file="environments/phase2.tfvars" -auto-approve
-```
+Expected range for a brief interview run: low-to-moderate. Keep environment up only during testing to control cost.
 
-Phase 1 is already pinned to `t2.small` with `1` instance, and Phase 2 scales to `2` instances.
-These phases are for bootstrap validation only. For `25k-100k` clients, move to larger instance families and restore multi-core-node sizing.
+## 14) SSH and Key Pair
 
-## Scale Strategy
-
-- Core service remains fixed at `3`.
-- Replicant service scales between `2` and `20` tasks (configurable).
-- Target tracking policy:
-  - CPU target default: `60%`
-  - Memory target default: `70%`
-
-Tune these based on your workload characteristics.
-
-## Capacity Notes
-
-This template is built to scale toward `100,000` concurrent clients, but **exact capacity depends on**:
-
-- message size/rate and QoS level
-- retained/session behavior
-- authentication backend latency
-- TLS usage and cert overhead
-
-You must run staged load tests (`25k`, `50k`, `75k`, `100k`) and adjust:
-
-- task CPU/memory
-- min/max replicant count
-- protocol/auth settings
-
-## Files
-
-- `data.tf` - AWS data sources
-- `locals.tf` - naming, tags, and shared EMQX env
-- `network.tf` - VPC, subnets, routes, NAT
-- `security.tf` - security groups for NLB and EMQX
-- `loadbalancer.tf` - NLB, target groups, listeners
-- `ecs.tf` - ECS cluster, CloudMap, task definitions, services
-- `autoscaling.tf` - replicant service autoscaling policies
-- `variables.tf` - input variables
-- `outputs.tf` - useful outputs
-- `terraform.tfvars.example` - editable defaults
-- `scripts/run_load_test.sh` - k6 sample runner
-- `loadtest/mqtt-k6.js` - k6 scenario template
-
-## Destroy
-
-```bash
-terraform destroy -auto-approve
-```
-
-## Hardening Checklist (Recommended)
-
-- Replace example EMQX dashboard credentials
-- Use ACM + TLS termination or passthrough cert strategy
-- Add AWS WAF/security controls around management endpoints
-- Integrate external auth/ACL store (Redis/Postgres/HTTP auth)
-- Configure alarms (connection drops, CPU saturation, memory pressure)
-# EMQX_autoScaling
+- Terraform creates one shared key pair for all nodes.
+- Generated private key path is exported as Terraform output.
+- SSH access is controlled via `ssh_allowed_cidr`.
+- SSM Session Manager is also enabled for SSH-less operations.

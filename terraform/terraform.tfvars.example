@@ -1,0 +1,20 @@
+aws_region = "ap-south-1"
+project_name = "emqx-interview"
+
+vpc_cidr = "10.0.0.0/16"
+availability_zones = ["ap-south-1a", "ap-south-1b"]
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+
+core_instance_type = "t3.medium"
+replicant_instance_type = "t3.medium"
+
+dashboard_allowed_cidr = "0.0.0.0/0"
+ssh_allowed_cidr = "0.0.0.0/0"
+
+emqx_node_cookie = "replace-with-long-random-cookie"
+emqx_dashboard_username = "admin"
+emqx_dashboard_password = "replace-with-strong-password"
+
+key_pair_name = "emqx-interview-key"
+create_local_private_key_file = true

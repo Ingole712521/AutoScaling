@@ -24,43 +24,30 @@ resource "aws_security_group" "nlb_sg" {
 }
 
 resource "aws_security_group" "emqx_nodes_sg" {
-  name        = "${var.project_name}-emqx-nodes-sg"
-  description = "Internal EMQX core/replicant node communication and MQTT"
+  name        = "${var.project_name}-emqx-cluster-sg"
+  description = "Production security framework for core and auto-scaled replicant instances"
   vpc_id      = aws_vpc.main.id
 
+  # Edge Client Traffic
   ingress {
-    description     = "MQTT from NLB SG"
-    from_port       = 1883
-    to_port         = 1883
-    protocol        = "tcp"
-    security_groups = [aws_security_group.nlb_sg.id]
+    description = "Allow inbound MQTT data lane traffic from edge load balancer"
+    from_port   = 1883
+    to_port     = 1883
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # THE CULPRIT FIX: Internal Cluster Sync Layer
   ingress {
-    description = "EMQX dashboard management"
-    from_port   = 18083
-    to_port     = 18083
-    protocol    = "tcp"
-    cidr_blocks = [var.dashboard_allowed_cidr]
-  }
-
-  ingress {
-    description = "Erlang distribution"
-    from_port   = 4370
-    to_port     = 4370
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "EMQX cluster communication"
-    from_port   = 5370
-    to_port     = 5370
-    protocol    = "tcp"
-    self        = true
+    description = "Allow unconditional backend communication among trusted cluster nodes"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true # Crucial: Allows instances sharing this SG to talk internally
   }
 
   egress {
+    description = "Allow full egress traffic to secure external dependencies"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -68,6 +55,6 @@ resource "aws_security_group" "emqx_nodes_sg" {
   }
 
   tags = merge(var.tags, {
-    Name = "${var.project_name}-emqx-nodes-sg"
+    Name = "${var.project_name}-emqx-cluster-sg"
   })
 }

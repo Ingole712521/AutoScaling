@@ -68,15 +68,11 @@ resource "aws_launch_template" "emqx_replicant_lt" {
     PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
     CORE_IP="${aws_instance.emqx_core.private_ip}"
 
-    docker pull emqx/emqx:latest
+    docker pull emqx/emqx:6.0.0
     docker rm -f emqx || true
     
-    # 1. Start the container seamlessly
-    docker run -d --name emqx --restart always \
-      -p 1883:1883 \
-      -p 18083:18083 \
-      -p 4370:4370 \
-      -p 5370:5370 \
+    # FIX: Using '--network host' removes the container network isolation layer
+    docker run -d --name emqx --restart always --network host \
       -e EMQX_NODE__ROLE=replicant \
       -e EMQX_NODE__NAME=emqx@$${PRIVATE_IP} \
       -e EMQX_CLUSTER__DISCOVERY_STRATEGY=static \
@@ -84,18 +80,15 @@ resource "aws_launch_template" "emqx_replicant_lt" {
       -e EMQX_NODE__COOKIE=${var.emqx_node_cookie} \
       -e EMQX_DASHBOARD__DEFAULT_USERNAME=${var.emqx_dashboard_username} \
       -e EMQX_DASHBOARD__DEFAULT_PASSWORD=${var.emqx_dashboard_password} \
-      emqx/emqx:latest
+      emqx/emqx:6.0.0
 
-    # 2. THE FIX: Wait inside the EC2 environment for the EMQX 
-    # internal application engine and ETS stats tables to stand up 
-    # completely before letting the LB mark it as healthy.
-    sleep 20
+    # Let the internal Erlang application spin up completely before exiting user data
+    sleep 25
   EOT
   )
 
   tag_specifications {
     resource_type = "instance"
-
     tags = merge(var.tags, {
       Name = "${var.project_name}-replicant"
       Role = "emqx-replicant"

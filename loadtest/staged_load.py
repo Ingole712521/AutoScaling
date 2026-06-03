@@ -2,7 +2,7 @@
 """
 High-intensity staged MQTT load test to trigger EMQX replicant autoscaling.
 
-Demo defaults target network > 20 KB/s and CPU > 1% within the first stage.
+Demo defaults target network > 20 KB/s (step +1) and CPU > 1% within the first stage.
 """
 
 from __future__ import annotations

@@ -113,12 +113,12 @@ terraform apply
 
 ## 7) Auto Scaling Explanation (Demo Thresholds)
 
-- Scale out: network in > 20 KB/s **or** CPU > 1% (demo — triggers in stage 1)
-- Scale in: CPU < 3% for 2 minutes (network policy is scale-out only; AWS target-tracking scale-in needs ~15 min)
-- Cooldown: 60 seconds
+- Scale out: network in > 20 KB/s **or** CPU > 1% — adds **+1 replicant** per alarm (not a jump to max)
+- Scale in: CPU < 3% for 2 minutes — removes **-1 replicant** per alarm
+- Cooldown: 60 seconds between scale actions
 - Never scales below 1 replicant
 
-These are intentionally small, interview-friendly thresholds to demonstrate behavior at low cost.
+Step scaling prevents bootstrap `apt`/EMQX downloads from scaling 1→4 on `terraform apply`; only the load test drives multi-node scale-out.
 
 ## 8) Load Balancer Explanation
 

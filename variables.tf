@@ -101,9 +101,15 @@ variable "replicant_max_size" {
 }
 
 variable "scale_out_network_target_bytes" {
-  description = "Demo: scale replicants when ASG average network in exceeds this value (bytes/sec). MQTT load triggers this early."
+  description = "Demo: scale out (+1 replicant) when ASG network in exceeds this value (bytes/sec). Step scaling adds one node at a time."
   type        = number
   default     = 20000
+}
+
+variable "scale_out_network_evaluation_periods" {
+  description = "Consecutive 60s periods network must exceed threshold before scale-out. Use 2+ to ignore brief bootstrap spikes."
+  type        = number
+  default     = 2
 }
 
 variable "autoscaling_cooldown_sec" {

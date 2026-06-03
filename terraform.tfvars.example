@@ -13,6 +13,7 @@ replicant_min_size      = 1
 replicant_desired_capacity = 1
 replicant_max_size      = 4
 scale_out_network_target_bytes = 20000
+scale_out_network_evaluation_periods = 2
 scale_out_cpu_threshold        = 1
 scale_in_cpu_threshold         = 3
 autoscaling_cooldown_sec       = 60

@@ -33,7 +33,7 @@ output "access_summary" {
     mqtt_port             = 1883
     dashboard_allowed_cidr = var.dashboard_allowed_cidr
     ssh_allowed_cidr      = var.ssh_allowed_cidr
-    autoscaling           = "Network > ${var.scale_out_network_target_bytes} bytes/sec OR CPU > ${var.scale_out_cpu_threshold}% scale out; CPU < ${var.scale_in_cpu_threshold}% scale in; min=${var.replicant_min_size} max=${var.replicant_max_size}"
+    autoscaling           = "Network > ${var.scale_out_network_target_bytes} bytes/sec (+1) OR CPU > ${var.scale_out_cpu_threshold}% (+1) scale out; CPU < ${var.scale_in_cpu_threshold}% (-1) scale in; min=${var.replicant_min_size} max=${var.replicant_max_size}"
     emqx_version          = var.emqx_version
     bootstrap_log         = "/var/log/emqx-bootstrap.log on each instance"
     config_method         = "EMQX 5.8 env overrides via /etc/emqx/terraform.env + systemd drop-in"

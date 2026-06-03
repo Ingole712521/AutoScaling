@@ -49,9 +49,9 @@ function Show-DeploySummary {
     Write-Host "  - Port 1883  (MQTT)      open from 0.0.0.0/0"
     Write-Host "  - Port 22    (SSH)       open per ssh_allowed_cidr"
     Write-Host ""
-    Write-Host "Autoscaling (demo — fast trigger):"
-    Write-Host "  - Scale OUT when network in > 20 KB/s (MQTT traffic) OR CPU > 1%"
-    Write-Host "  - Scale IN  when CPU < 3% for 2 minutes"
+    Write-Host "Autoscaling (demo — step +1/-1):"
+    Write-Host "  - Scale OUT +1 when network in > 20 KB/s (2 min) OR CPU > 1%"
+    Write-Host "  - Scale IN  -1 when CPU < 3% for 2 minutes"
     Write-Host "  - Cooldown: 60 seconds between scale actions"
     Write-Host "  - Replicants: min 1, max 4"
     Write-Host "========================================" -ForegroundColor Cyan

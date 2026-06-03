@@ -1,0 +1,16 @@
+{
+  "commands": [
+    "set -euo pipefail",
+    "ENV=/etc/emqx/terraform.env",
+    "install -d /etc/systemd/system/emqx.service.d",
+    "test -f /etc/systemd/system/emqx.service.d/terraform.conf || printf '%s\\n' '[Service]' 'EnvironmentFile=-/etc/emqx/terraform.env' > /etc/systemd/system/emqx.service.d/terraform.conf",
+    "touch \"$ENV\"",
+    "grep -q 'ENABLE_AUTHN=false' \"$ENV\" || echo 'EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN=false' >> \"$ENV\"",
+    "grep -q 'MAX_PACKET_SIZE' \"$ENV\" || echo 'EMQX_MQTT__MAX_PACKET_SIZE=1MB' >> \"$ENV\"",
+    "systemctl daemon-reload",
+    "systemctl restart emqx",
+    "sleep 8",
+    "ss -tln | grep ':1883'",
+    "echo MQTT_PATCH_OK"
+  ]
+}

@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""
-High-intensity staged MQTT load test to trigger EMQX replicant autoscaling.
-
-Demo defaults target network > 20 KB/s (step +1) and CPU > 1% within the first stage.
-"""
+"""Staged MQTT load test via NLB — waits for CONNACK, reports errors, stops on failure."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import random
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -26,12 +24,11 @@ class Stage:
     label: str
 
 
-# Aggressive demo profile: heavy load from stage 1 for fast ASG scale-out
 DEFAULT_STAGES = [
     Stage(40, 180, "baseline-heavy"),
     Stage(80, 300, "scale-out-2"),
     Stage(120, 300, "scale-out-3"),
-    Stage(10, 360, "scale-in"),
+    Stage(10, 90, "scale-in"),
 ]
 
 DEFAULT_PUBLISH_INTERVAL = 0.001
@@ -40,6 +37,12 @@ DEFAULT_MESSAGES_PER_BURST = 10
 DEFAULT_LOAD_STAGES = ",".join(
     f"{s.clients}:{s.duration_sec}:{s.label}" for s in DEFAULT_STAGES
 )
+
+
+def connack_ok(reason_code: object) -> bool:
+    if reason_code is None:
+        return False
+    return getattr(reason_code, "value", reason_code) == 0
 
 
 class LoadClient(threading.Thread):
@@ -53,6 +56,9 @@ class LoadClient(threading.Thread):
         payload_size: int,
         messages_per_burst: int,
         stop_event: threading.Event,
+        connect_timeout_sec: float,
+        error_samples: list[str],
+        error_lock: threading.Lock,
     ) -> None:
         super().__init__(daemon=True)
         self.host = host
@@ -63,19 +69,44 @@ class LoadClient(threading.Thread):
         self.payload = "X" * payload_size
         self.messages_per_burst = messages_per_burst
         self.stop_event = stop_event
+        self.connect_timeout_sec = connect_timeout_sec
+        self.error_samples = error_samples
+        self.error_lock = error_lock
         self.published = 0
         self.errors = 0
 
+    def _fail(self, message: str) -> None:
+        self.errors += 1
+        with self.error_lock:
+            if len(self.error_samples) < 8:
+                self.error_samples.append(f"{self.client_id}: {message}")
+
     def run(self) -> None:
+        ready = threading.Event()
+        conn_rc: list[object] = [None]
+
+        def on_connect(_c, _u, _f, reason_code, _p) -> None:
+            conn_rc[0] = reason_code
+            ready.set()
+
         client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=self.client_id,
             protocol=mqtt.MQTTv311,
         )
+        client.on_connect = on_connect
 
         try:
+            time.sleep(random.uniform(0, 0.3))
             client.connect(self.host, self.port, keepalive=60)
             client.loop_start()
+
+            if not ready.wait(timeout=self.connect_timeout_sec):
+                self._fail("CONNACK timeout")
+                return
+            if not connack_ok(conn_rc[0]):
+                self._fail(f"CONNACK rejected ({conn_rc[0]})")
+                return
 
             seq = 0
             while not self.stop_event.is_set():
@@ -88,16 +119,15 @@ class LoadClient(threading.Thread):
                             "payload": self.payload,
                         }
                     )
-                    result = client.publish(self.topic, payload, qos=0)
-                    if result.rc != mqtt.MQTT_ERR_SUCCESS:
-                        self.errors += 1
-                    else:
-                        self.published += 1
-                        seq += 1
-
+                    info = client.publish(self.topic, payload, qos=0)
+                    if info.rc != mqtt.MQTT_ERR_SUCCESS:
+                        self._fail(f"publish rc={info.rc}")
+                        return
+                    self.published += 1
+                    seq += 1
                 time.sleep(self.publish_interval_sec)
-        except Exception:
-            self.errors += 1
+        except Exception as exc:
+            self._fail(str(exc))
         finally:
             try:
                 client.loop_stop()
@@ -106,35 +136,142 @@ class LoadClient(threading.Thread):
                 pass
 
 
-def parse_stages(raw: str) -> list[Stage]:
-    stages: list[Stage] = []
-    for part in raw.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        clients_str, duration_str, *label_parts = part.split(":")
-        label = label_parts[0] if label_parts else f"{clients_str}-clients"
-        stages.append(
-            Stage(
-                clients=int(clients_str),
-                duration_sec=int(duration_str),
-                label=label,
-            )
-        )
-    return stages
+def probe_broker(host: str, port: int, topic: str, timeout_sec: float) -> bool:
+    ready = threading.Event()
+    state = {"rc": None}
+
+    def on_connect(_c, _u, _f, rc, _p) -> None:
+        state["rc"] = rc
+        ready.set()
+
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id=f"preflight-{int(time.time())}",
+        protocol=mqtt.MQTTv311,
+    )
+    client.on_connect = on_connect
+    try:
+        client.connect(host, port, keepalive=30)
+        client.loop_start()
+        if not ready.wait(timeout=timeout_sec):
+            print(f"Preflight FAIL: no CONNACK within {timeout_sec}s")
+            return False
+        if not connack_ok(state["rc"]):
+            print(f"Preflight FAIL: CONNACK={state['rc']}")
+            return False
+        info = client.publish(topic, '{"preflight":true}', qos=0)
+        time.sleep(0.5)
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            print(f"Preflight FAIL: publish rc={info.rc}")
+            return False
+        print(f"Preflight OK: {host}:{port}")
+        return True
+    except Exception as exc:
+        print(f"Preflight FAIL: {exc}")
+        return False
+    finally:
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass
 
 
-def estimate_throughput_bytes_per_sec(
+def asg_desired_capacity(asg_name: str, region: str) -> int | None:
+    if not asg_name:
+        return None
+    try:
+        out = subprocess.check_output(
+            [
+                "aws", "autoscaling", "describe-auto-scaling-groups",
+                "--region", region,
+                "--auto-scaling-group-names", asg_name,
+                "--query", "AutoScalingGroups[0].DesiredCapacity",
+                "--output", "text",
+            ],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=30,
+        ).strip()
+        return int(out) if out and out != "None" else None
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        return None
+
+
+def log_asg_capacity(asg_name: str, region: str, label: str) -> None:
+    cap = asg_desired_capacity(asg_name, region)
+    if cap is not None:
+        print(f"  ASG {asg_name} desired_capacity={cap} ({label})")
+
+
+def run_until_stopped(
+    host: str,
+    port: int,
     clients: int,
+    label: str,
+    topic: str,
     publish_interval_sec: float,
     payload_size: int,
     messages_per_burst: int,
-) -> int:
-    json_overhead = 120
-    per_message = payload_size + json_overhead
-    if publish_interval_sec <= 0:
-        return clients * messages_per_burst * per_message
-    return int(clients * messages_per_burst * per_message / publish_interval_sec)
+    connect_timeout_sec: float,
+    global_stop: threading.Event,
+    asg_name: str = "",
+    aws_region: str = "ap-south-1",
+) -> bool:
+    """Run N MQTT clients until global_stop is set (Ctrl+C)."""
+    stop_event = threading.Event()
+    threads: list[LoadClient] = []
+    error_samples: list[str] = []
+    error_lock = threading.Lock()
+
+    print(f"\n[sustained] {label}: {clients} clients until you press Ctrl+C")
+    print("  Watch ASG desired capacity in AWS Console while this runs.")
+
+    for i in range(clients):
+        if global_stop.is_set():
+            break
+        worker = LoadClient(
+            host=host,
+            port=port,
+            client_id=f"load-{label}-{i}",
+            topic=topic,
+            publish_interval_sec=publish_interval_sec,
+            payload_size=payload_size,
+            messages_per_burst=messages_per_burst,
+            stop_event=stop_event,
+            connect_timeout_sec=connect_timeout_sec,
+            error_samples=error_samples,
+            error_lock=error_lock,
+        )
+        threads.append(worker)
+        worker.start()
+        time.sleep(0.05)
+
+    started = time.time()
+    while not global_stop.is_set():
+        time.sleep(10)
+        published = sum(t.published for t in threads)
+        errors = sum(t.errors for t in threads)
+        elapsed = int(time.time() - started)
+        line = f"  elapsed={elapsed}s published={published} errors={errors} clients={len(threads)}"
+        if asg_name:
+            cap = asg_desired_capacity(asg_name, aws_region)
+            if cap is not None:
+                line += f" asg_desired={cap}"
+        print(line)
+        if errors and error_samples:
+            for sample in error_samples[:3]:
+                print(f"    sample: {sample}")
+
+    print("\nStopping clients...")
+    stop_event.set()
+    for t in threads:
+        t.join(timeout=5)
+
+    published = sum(t.published for t in threads)
+    errors = sum(t.errors for t in threads)
+    print(f"[sustained] stopped published={published} errors={errors}")
+    return published > 0 and errors == 0
 
 
 def run_stage(
@@ -146,19 +283,16 @@ def run_stage(
     payload_size: int,
     messages_per_burst: int,
     stage_index: int,
-) -> None:
+    connect_timeout_sec: float,
+) -> bool:
     stop_event = threading.Event()
     threads: list[LoadClient] = []
-
-    est_bps = estimate_throughput_bytes_per_sec(
-        stage.clients, publish_interval_sec, payload_size, messages_per_burst
-    )
+    error_samples: list[str] = []
+    error_lock = threading.Lock()
 
     print(
         f"\n[stage {stage_index}] {stage.label}: "
-        f"{stage.clients} clients for {stage.duration_sec}s "
-        f"(burst={messages_per_burst}, interval={publish_interval_sec}s, "
-        f"payload={payload_size}B, est~{est_bps // 1024} KB/s)"
+        f"{stage.clients} clients x {stage.duration_sec}s"
     )
 
     for i in range(stage.clients):
@@ -171,119 +305,142 @@ def run_stage(
             payload_size=payload_size,
             messages_per_burst=messages_per_burst,
             stop_event=stop_event,
+            connect_timeout_sec=connect_timeout_sec,
+            error_samples=error_samples,
+            error_lock=error_lock,
         )
         threads.append(worker)
         worker.start()
+        time.sleep(0.08)
 
     deadline = time.time() + stage.duration_sec
     while time.time() < deadline:
         time.sleep(10)
-        total_published = sum(t.published for t in threads)
-        total_errors = sum(t.errors for t in threads)
-        remaining = int(deadline - time.time())
+        published = sum(t.published for t in threads)
+        errors = sum(t.errors for t in threads)
         print(
-            f"  ... {stage.clients} clients active, "
-            f"published={total_published}, errors={total_errors}, "
-            f"remaining={remaining}s"
+            f"  published={published} errors={errors} "
+            f"remaining={int(deadline - time.time())}s"
         )
+        if errors and error_samples:
+            for line in error_samples[:3]:
+                print(f"    sample: {line}")
 
     stop_event.set()
-    for worker in threads:
-        worker.join(timeout=5)
+    for t in threads:
+        t.join(timeout=5)
 
-    total_published = sum(t.published for t in threads)
-    total_errors = sum(t.errors for t in threads)
-    print(
-        f"[stage {stage_index}] done: published={total_published}, errors={total_errors}"
-    )
+    published = sum(t.published for t in threads)
+    errors = sum(t.errors for t in threads)
+    print(f"[stage {stage_index}] done published={published} errors={errors}")
+    return published > 0 and errors == 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Run staged MQTT load against EMQX NLB to trigger autoscaling."
-    )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("MQTT_HOST", ""),
-        help="NLB DNS name (or set MQTT_HOST env var).",
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default=os.environ.get("MQTT_HOST", ""))
     parser.add_argument("--port", type=int, default=int(os.environ.get("MQTT_PORT", "1883")))
+    parser.add_argument("--topic", default=os.environ.get("MQTT_TOPIC", "loadtest/staged"))
+    parser.add_argument("--publish-interval", type=float, default=float(os.environ.get("PUBLISH_INTERVAL", "0.001")))
+    parser.add_argument("--payload-size", type=int, default=int(os.environ.get("PAYLOAD_SIZE", "16384")))
+    parser.add_argument("--messages-per-burst", type=int, default=int(os.environ.get("MESSAGES_PER_BURST", "10")))
+    parser.add_argument("--stages", default=os.environ.get("LOAD_STAGES", DEFAULT_LOAD_STAGES))
+    parser.add_argument("--skip-preflight", action="store_true")
+    parser.add_argument("--connect-timeout", type=float, default=float(os.environ.get("MQTT_CONNECT_TIMEOUT", "20")))
+    parser.add_argument("--asg-name", default=os.environ.get("ASG_NAME", ""))
+    parser.add_argument("--aws-region", default=os.environ.get("AWS_REGION", "ap-south-1"))
     parser.add_argument(
-        "--topic",
-        default=os.environ.get("MQTT_TOPIC", "loadtest/staged"),
-        help="MQTT topic for load messages.",
+        "--sustained",
+        action="store_true",
+        help="Run until Ctrl+C (use with --clients)",
     )
     parser.add_argument(
-        "--publish-interval",
-        type=float,
-        default=float(os.environ.get("PUBLISH_INTERVAL", str(DEFAULT_PUBLISH_INTERVAL))),
-        help="Seconds between publish bursts per client (lower = heavier load).",
-    )
-    parser.add_argument(
-        "--payload-size",
+        "--clients",
         type=int,
-        default=int(os.environ.get("PAYLOAD_SIZE", str(DEFAULT_PAYLOAD_SIZE))),
-        help="Payload padding size in bytes.",
-    )
-    parser.add_argument(
-        "--messages-per-burst",
-        type=int,
-        default=int(os.environ.get("MESSAGES_PER_BURST", str(DEFAULT_MESSAGES_PER_BURST))),
-        help="Messages each client publishes per burst.",
-    )
-    parser.add_argument(
-        "--stages",
-        default=os.environ.get("LOAD_STAGES", DEFAULT_LOAD_STAGES),
-        help="Comma-separated stages as clients:seconds:label.",
+        default=int(os.environ.get("LOAD_CLIENTS", "100")),
+        help="Number of MQTT clients for --sustained mode (default 100)",
     )
     args = parser.parse_args()
 
     if not args.host:
-        print("Error: pass --host or set MQTT_HOST to the NLB DNS name.", file=sys.stderr)
-        print("Example: python loadtest/staged_load.py --host your-nlb.elb.amazonaws.com")
+        print("Error: --host or MQTT_HOST required", file=sys.stderr)
         return 1
+
+    print(f"Target NLB: {args.host}:{args.port}")
+    if args.asg_name:
+        log_asg_capacity(args.asg_name, args.aws_region, "before load test")
+    if not args.skip_preflight and not probe_broker(args.host, args.port, args.topic, args.connect_timeout):
+        return 1
+
+    stop = threading.Event()
+
+    def on_sig(_a, _b) -> None:
+        stop.set()
+        print("\nCtrl+C received — stopping load test...")
+
+    signal.signal(signal.SIGINT, on_sig)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, on_sig)
+
+    if args.sustained:
+        ok = run_until_stopped(
+            args.host,
+            args.port,
+            args.clients,
+            "sustained-100",
+            args.topic,
+            args.publish_interval,
+            args.payload_size,
+            args.messages_per_burst,
+            args.connect_timeout,
+            stop,
+            asg_name=args.asg_name,
+            aws_region=args.aws_region,
+        )
+        if args.asg_name:
+            log_asg_capacity(args.asg_name, args.aws_region, "after sustained load")
+        print("\nSustained load test finished." if ok else "\nSustained load test ended with errors.")
+        return 0 if ok else 1
 
     stages = parse_stages(args.stages)
     if not stages:
-        print("Error: no valid stages configured.", file=sys.stderr)
         return 1
 
-    print("EMQX high-intensity staged load test")
-    print(f"  target: {args.host}:{args.port}")
-    print(f"  topic:  {args.topic}")
-    print(f"  stages: {len(stages)}")
-    print(f"  burst:  {args.messages_per_burst} msgs every {args.publish_interval}s")
-    print(f"  payload: {args.payload_size} bytes")
-    print("  autoscaling target: network > 20 KB/s or CPU > 1%")
-
-    interrupted = threading.Event()
-
-    def handle_signal(_signum, _frame) -> None:
-        interrupted.set()
-        print("\nStopping load test...")
-
-    signal.signal(signal.SIGINT, handle_signal)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, handle_signal)
-
-    for index, stage in enumerate(stages, start=1):
-        if interrupted.is_set():
+    for idx, stage in enumerate(stages, 1):
+        if stop.is_set():
             break
-        run_stage(
-            host=args.host,
-            port=args.port,
-            stage=stage,
-            topic=args.topic,
-            publish_interval_sec=args.publish_interval,
-            payload_size=args.payload_size,
-            messages_per_burst=args.messages_per_burst,
-            stage_index=index,
-        )
+        if not run_stage(
+            args.host,
+            args.port,
+            stage,
+            args.topic,
+            args.publish_interval,
+            args.payload_size,
+            args.messages_per_burst,
+            idx,
+            args.connect_timeout,
+        ):
+            print("Stage failed — fix broker/NLB before continuing.")
+            return 1
+        if args.asg_name:
+            log_asg_capacity(args.asg_name, args.aws_region, f"after {stage.label}")
 
-    print("\nLoad test finished.")
-    print("Check AWS Console -> EC2 Auto Scaling Groups -> desired capacity")
-    print("Or CloudWatch -> ASG network in / CPU metrics")
+    print("\nLoad test finished successfully.")
+    if args.asg_name:
+        log_asg_capacity(args.asg_name, args.aws_region, "final")
     return 0
+
+
+def parse_stages(raw: str) -> list[Stage]:
+    stages: list[Stage] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        clients_str, duration_str, *label_parts = part.split(":")
+        label = label_parts[0] if label_parts else "stage"
+        stages.append(Stage(int(clients_str), int(duration_str), label))
+    return stages
 
 
 if __name__ == "__main__":

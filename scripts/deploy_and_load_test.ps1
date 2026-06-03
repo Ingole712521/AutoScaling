@@ -46,13 +46,13 @@ function Show-DeploySummary {
     Write-Host ""
     Write-Host "Firewall (security groups):"
     Write-Host "  - Port 18083 (dashboard) open per dashboard_allowed_cidr"
-    Write-Host "  - Port 1883  (MQTT)      open from 0.0.0.0/0"
+    Write-Host "  - Port 1883  (MQTT)      via NLB only (replicants accept NLB SG)"
     Write-Host "  - Port 22    (SSH)       open per ssh_allowed_cidr"
     Write-Host ""
-    Write-Host "Autoscaling (demo — step +1/-1):"
-    Write-Host "  - Scale OUT +1 when network in > 20 KB/s (2 min) OR CPU > 1%"
-    Write-Host "  - Scale IN  -1 when CPU < 3% for 2 minutes"
-    Write-Host "  - Cooldown: 60 seconds between scale actions"
+    Write-Host "Autoscaling (step +1/-1):"
+    Write-Host "  - Scale OUT +1 when NLB/ASG network > 20 KB/s for 2 minutes"
+    Write-Host "  - Scale IN  -1 when CPU < 5% for ~60 seconds"
+    Write-Host "  - Scale-out cooldown: 60 seconds"
     Write-Host "  - Replicants: min 1, max 4"
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
@@ -71,7 +71,7 @@ Set-Location '$Root'
 `$env:PUBLISH_INTERVAL = '0.001'
 `$env:PAYLOAD_SIZE = '16384'
 `$env:MESSAGES_PER_BURST = '10'
-`$env:LOAD_STAGES = '40:180:baseline-heavy,80:300:scale-out-2,120:300:scale-out-3,10:360:scale-in'
+`$env:LOAD_STAGES = '40:180:baseline-heavy,80:300:scale-out-2,120:300:scale-out-3,10:90:scale-in'
 Write-Host 'Starting HIGH-INTENSITY autoscaling load test against $MqttHost' -ForegroundColor Green
 & '$loadScript' -MqttHost '$MqttHost'
 "@

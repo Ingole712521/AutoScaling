@@ -58,14 +58,6 @@ resource "aws_security_group" "core" {
     self        = true
   }
 
-  ingress {
-    description     = "Cluster traffic from replicants"
-    from_port       = 0
-    to_port         = 0
-    protocol        = "-1"
-    security_groups = [aws_security_group.replicant.id]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -121,14 +113,6 @@ resource "aws_security_group" "replicant" {
     self        = true
   }
 
-  ingress {
-    description     = "Cluster traffic from core nodes"
-    from_port       = 0
-    to_port         = 0
-    protocol        = "-1"
-    security_groups = [aws_security_group.core.id]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -137,4 +121,25 @@ resource "aws_security_group" "replicant" {
   }
 
   tags = merge(var.tags, { Name = "${var.project_name}-replicant-sg" })
+}
+
+# Separate rules avoid core <-> replicant security group cycle.
+resource "aws_security_group_rule" "core_from_replicant" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.core.id
+  source_security_group_id = aws_security_group.replicant.id
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "-1"
+  description              = "Cluster traffic from replicants"
+}
+
+resource "aws_security_group_rule" "replicant_from_core" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.replicant.id
+  source_security_group_id = aws_security_group.core.id
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "-1"
+  description              = "Cluster traffic from core nodes"
 }

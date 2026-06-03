@@ -23,8 +23,8 @@ resource "aws_iam_role_policy_attachment" "emqx_ec2_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_role_policy" "emqx_ec2_ssm_read" {
-  name = "${var.project_name}-ec2-ssm-read"
+resource "aws_iam_role_policy" "emqx_ec2_ssm_cluster" {
+  name = "${var.project_name}-ec2-ssm-cluster"
   role = aws_iam_role.emqx_ec2.id
 
   policy = jsonencode({
@@ -35,6 +35,16 @@ resource "aws_iam_role_policy" "emqx_ec2_ssm_read" {
         Action = [
           "ssm:GetParameter",
           "ssm:GetParameters",
+        ]
+        Resource = [
+          aws_ssm_parameter.core_private_ip.arn,
+          aws_ssm_parameter.cluster_seeds.arn,
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:PutParameter",
         ]
         Resource = [
           aws_ssm_parameter.core_private_ip.arn,

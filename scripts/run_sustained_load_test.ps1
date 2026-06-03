@@ -1,12 +1,12 @@
-# Run staged MQTT load against EMQX NLB to trigger autoscaling.
+# 100 MQTT clients through NLB until you press Ctrl+C (drives autoscaling).
 param(
     [string]$MqttHost = $env:MQTT_HOST,
     [string]$TerraformDir = ".",
     [switch]$FromTerraform,
+    [int]$Clients = 100,
     [string]$PublishInterval = $env:PUBLISH_INTERVAL,
     [string]$PayloadSize = $env:PAYLOAD_SIZE,
-    [string]$MessagesPerBurst = $env:MESSAGES_PER_BURST,
-    [string]$LoadStages = $env:LOAD_STAGES
+    [string]$MessagesPerBurst = $env:MESSAGES_PER_BURST
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,9 +15,6 @@ Set-Location $Root
 
 $AsgName = $env:ASG_NAME
 if ($FromTerraform) {
-    if (-not (Get-Command terraform -ErrorAction SilentlyContinue)) {
-        throw "terraform is not installed or not on PATH."
-    }
     Push-Location $TerraformDir
     try {
         foreach ($name in @("mqtt_nlb_dns_name", "nlb_dns_name")) {
@@ -42,36 +39,30 @@ if ([string]::IsNullOrWhiteSpace($MqttHost)) {
     exit 1
 }
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "Python 3 is required."
-}
-
-if ([string]::IsNullOrWhiteSpace($PublishInterval)) { $PublishInterval = "0.001" }
-if ([string]::IsNullOrWhiteSpace($PayloadSize)) { $PayloadSize = "16384" }
-if ([string]::IsNullOrWhiteSpace($MessagesPerBurst)) { $MessagesPerBurst = "10" }
-if ([string]::IsNullOrWhiteSpace($LoadStages)) {
-    $LoadStages = "40:180:baseline-heavy,80:300:scale-out-2,120:300:scale-out-3,10:90:scale-in"
-}
+if ([string]::IsNullOrWhiteSpace($PublishInterval)) { $PublishInterval = "0.01" }
+if ([string]::IsNullOrWhiteSpace($PayloadSize)) { $PayloadSize = "8192" }
+if ([string]::IsNullOrWhiteSpace($MessagesPerBurst)) { $MessagesPerBurst = "5" }
 
 Write-Host "Installing dependencies..."
 python -m pip install -q -r loadtest/requirements.txt
 
 Write-Host "MQTT preflight..."
 python scripts/mqtt_probe.py --host $MqttHost
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Preflight failed. Run: .\scripts\fix_mqtt_anonymous_ssm.ps1 then .\scripts\prove_emqx_cluster.ps1" -ForegroundColor Yellow
-    exit 1
-}
+if ($LASTEXITCODE -ne 0) { exit 1 }
+
+Write-Host ""
+Write-Host "Starting $Clients clients on $MqttHost - press Ctrl+C to stop." -ForegroundColor Green
+Write-Host ""
 
 $env:PYTHONUNBUFFERED = "1"
-Write-Host "Starting staged load test on $MqttHost"
 $pyArgs = @(
     "-u", "loadtest/staged_load.py",
     "--host", $MqttHost,
+    "--sustained",
+    "--clients", "$Clients",
     "--publish-interval", $PublishInterval,
     "--payload-size", $PayloadSize,
-    "--messages-per-burst", $MessagesPerBurst,
-    "--stages", $LoadStages
+    "--messages-per-burst", $MessagesPerBurst
 )
 if (-not [string]::IsNullOrWhiteSpace($AsgName)) {
     $pyArgs += @("--asg-name", $AsgName)

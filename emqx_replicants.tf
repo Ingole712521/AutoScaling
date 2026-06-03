@@ -19,6 +19,8 @@ resource "aws_lb_target_group" "mqtt_tg" {
   vpc_id      = aws_vpc.main.id
   target_type = "instance"
 
+  deregistration_delay = 10
+
   health_check {
     protocol            = "TCP"
     port                = "1883"
@@ -48,6 +50,10 @@ resource "aws_launch_template" "emqx_replicant_lt" {
   image_id      = data.aws_ami.ubuntu_2204.id
   instance_type = var.replicant_instance_type
   key_name      = var.key_name
+
+  monitoring {
+    enabled = true
+  }
 
   vpc_security_group_ids = [aws_security_group.emqx_nodes_sg.id]
 
@@ -112,10 +118,12 @@ resource "aws_autoscaling_group" "emqx_replicants_asg" {
     create_before_destroy = true
   }
 
+  default_cooldown = var.autoscaling_cooldown_sec
+
   instance_refresh {
     strategy = "Rolling"
     preferences {
-      min_healthy_percentage = 0
+      min_healthy_percentage = 50
       instance_warmup        = 600
     }
   }

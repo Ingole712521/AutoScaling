@@ -1,16 +1,15 @@
 #!/bin/bash
+# EMQX 5.x core bootstrap — overrides via terraform.env (preserves package emqx.conf).
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -y
 apt-get install -y curl unzip jq ca-certificates gnupg apt-transport-https lsb-release
 
-# Install EMQX 5.x
 curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
 apt-get update -y
 apt-get install -y emqx
 
-# Install CloudWatch agent for memory metrics
 wget -O /tmp/amazon-cloudwatch-agent.deb https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
 dpkg -i /tmp/amazon-cloudwatch-agent.deb
 
@@ -33,25 +32,41 @@ CWCFG
 
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
 
-cat > /etc/emqx/emqx.conf <<EOF
-node {
-  name = "${node_name}"
-  cookie = "${node_cookie}"
-  role = core
-}
+EMQX_ENV_FILE="/etc/emqx/terraform.env"
+SYSTEMD_DROPIN="/etc/systemd/system/emqx.service.d"
 
-cluster {
-  discovery_strategy = static
-  static {
-    seeds = ${seed_nodes}
-  }
-}
+install -d "$SYSTEMD_DROPIN"
 
-dashboard {
-  default_username = "${dashboard_username}"
-  default_password = "${dashboard_password}"
-}
+cat > "$EMQX_ENV_FILE" <<EOF
+EMQX_NODE__NAME="${node_name}"
+EMQX_NODE__COOKIE="${node_cookie}"
+EMQX_CLUSTER__DISCOVERY_STRATEGY=static
+EMQX_CLUSTER__STATIC__SEEDS=${seed_nodes}
+EMQX_DASHBOARD__DEFAULT_USERNAME="${dashboard_username}"
+EMQX_DASHBOARD__DEFAULT_PASSWORD="${dashboard_password}"
+EMQX_DASHBOARD__LISTENERS__HTTP__BIND=18083
+EMQX_LISTENERS__TCP__DEFAULT__BIND=0.0.0.0:1883
+EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN=false
+EMQX_MQTT__MAX_PACKET_SIZE=1MB
 EOF
 
+cat > "$SYSTEMD_DROPIN/terraform.conf" <<'EOF'
+[Service]
+EnvironmentFile=-/etc/emqx/terraform.env
+EOF
+
+chmod 600 "$EMQX_ENV_FILE"
+chmod 644 "$SYSTEMD_DROPIN/terraform.conf"
+
+systemctl daemon-reload
 systemctl enable emqx
 systemctl restart emqx
+
+for attempt in $(seq 1 60); do
+  if ss -tln | grep -q ':1883' && ss -tln | grep -q ':18083'; then
+    break
+  fi
+  sleep 10
+done
+
+/usr/bin/emqx ctl status || true

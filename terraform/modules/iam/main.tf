@@ -26,9 +26,9 @@ resource "aws_iam_role_policy_attachment" "cw_agent" {
 
 data "aws_iam_policy_document" "route53_read" {
   statement {
-    sid     = "Route53Read"
-    effect  = "Allow"
-    actions = ["route53:Get*", "route53:List*"]
+    sid       = "Route53Read"
+    effect    = "Allow"
+    actions   = ["route53:Get*", "route53:List*"]
     resources = ["*"]
   }
 }

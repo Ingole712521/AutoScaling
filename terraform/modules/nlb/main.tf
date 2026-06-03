@@ -17,6 +17,9 @@ resource "aws_lb_target_group" "mqtt" {
   vpc_id      = var.vpc_id
   target_type = "instance"
 
+  # Drop long-lived MQTT flows when a replicant is removed so NLB can rebalance.
+  deregistration_delay = 10
+
   health_check {
     protocol = "TCP"
     port     = "1883"

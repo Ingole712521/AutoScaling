@@ -54,21 +54,21 @@ module "route53" {
 }
 
 module "emqx_core" {
-  source                     = "./modules/emqx-core"
-  project_name               = var.project_name
-  nodes                      = local.core_nodes
-  private_subnet_ids         = module.vpc.private_subnet_ids
-  security_group_id          = module.security_groups.core_sg_id
-  key_name                   = module.keypair.key_name
-  instance_profile_name      = module.iam.instance_profile_name
-  zone_name                  = module.route53.zone_name
-  node_cookie                = var.emqx_node_cookie
-  dashboard_username         = var.emqx_dashboard_username
-  dashboard_password         = var.emqx_dashboard_password
-  core_seed_hosts            = local.core_seed_hosts
-  instance_type              = var.core_instance_type
+  source                      = "./modules/emqx-core"
+  project_name                = var.project_name
+  nodes                       = local.core_nodes
+  private_subnet_ids          = module.vpc.private_subnet_ids
+  security_group_id           = module.security_groups.core_sg_id
+  key_name                    = module.keypair.key_name
+  instance_profile_name       = module.iam.instance_profile_name
+  zone_name                   = module.route53.zone_name
+  node_cookie                 = var.emqx_node_cookie
+  dashboard_username          = var.emqx_dashboard_username
+  dashboard_password          = var.emqx_dashboard_password
+  core_seed_hosts             = local.core_seed_hosts
+  instance_type               = var.core_instance_type
   core_userdata_template_path = "${path.root}/../userdata/core.sh"
-  tags                       = local.common_tags
+  tags                        = local.common_tags
 }
 
 module "route53_core_records" {
@@ -85,49 +85,58 @@ module "route53_core_records" {
 }
 
 module "nlb" {
-  source              = "./modules/nlb"
-  project_name        = var.project_name
-  vpc_id              = module.vpc.vpc_id
-  public_subnet_ids   = module.vpc.public_subnet_ids
-  nlb_sg_id           = module.security_groups.nlb_sg_id
-  replicant_sg_id     = module.security_groups.replicant_sg_id
-  tags                = local.common_tags
+  source            = "./modules/nlb"
+  project_name      = var.project_name
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+  nlb_sg_id         = module.security_groups.nlb_sg_id
+  replicant_sg_id   = module.security_groups.replicant_sg_id
+  tags              = local.common_tags
 }
 
 module "emqx_replicant" {
-  source                          = "./modules/emqx-replicant"
-  project_name                    = var.project_name
-  private_subnet_ids              = module.vpc.private_subnet_ids
-  replicant_sg_id                 = module.security_groups.replicant_sg_id
-  key_name                        = module.keypair.key_name
-  instance_profile_name           = module.iam.instance_profile_name
-  target_group_arns               = [module.nlb.mqtt_target_group_arn, module.nlb.mqtt_tls_target_group_arn]
-  zone_name                       = module.route53.zone_name
-  node_cookie                     = var.emqx_node_cookie
-  dashboard_username              = var.emqx_dashboard_username
-  dashboard_password              = var.emqx_dashboard_password
-  core_seed_hosts                 = local.core_seed_hosts
-  instance_type                   = var.replicant_instance_type
+  source                = "./modules/emqx-replicant"
+  project_name          = var.project_name
+  private_subnet_ids    = module.vpc.private_subnet_ids
+  replicant_sg_id       = module.security_groups.replicant_sg_id
+  key_name              = module.keypair.key_name
+  instance_profile_name = module.iam.instance_profile_name
+  # MQTT TLS (8883) is not configured on replicants; only register the plain MQTT target group.
+  target_group_arns                = [module.nlb.mqtt_target_group_arn]
+  zone_name                        = module.route53.zone_name
+  node_cookie                      = var.emqx_node_cookie
+  dashboard_username               = var.emqx_dashboard_username
+  dashboard_password               = var.emqx_dashboard_password
+  core_seed_hosts                  = local.core_seed_hosts
+  instance_type                    = var.replicant_instance_type
   replicant_userdata_template_path = "${path.root}/../userdata/replicant.sh"
-  tags                            = local.common_tags
+  health_check_grace_period        = 600
+  tags                             = local.common_tags
+
+  depends_on = [module.emqx_core, module.route53_core_records]
 }
 
 module "autoscaling" {
-  source                 = "./modules/autoscaling"
-  project_name           = var.project_name
-  asg_name               = module.emqx_replicant.asg_name
-  min_capacity           = 1
-  max_capacity           = 4
-  scale_out_cpu_threshold = 40
-  scale_in_cpu_threshold  = 15
+  source                          = "./modules/autoscaling"
+  project_name                    = var.project_name
+  asg_name                        = module.emqx_replicant.asg_name
+  min_capacity                    = 1
+  max_capacity                    = 4
+  nlb_arn_suffix                  = module.nlb.nlb_arn_suffix
+  scale_in_cpu_threshold          = 5
+  scale_out_network_bytes_per_sec = 20480
+  scale_in_metric_period_sec      = 30
+  scale_in_evaluation_periods     = 2
+  scale_in_cooldown_sec           = 0
+  cooldown_sec                    = 60
 }
 
 module "cloudwatch" {
-  source                 = "./modules/cloudwatch"
-  project_name           = var.project_name
-  asg_name               = module.emqx_replicant.asg_name
-  nlb_arn_suffix         = module.nlb.nlb_arn_suffix
+  source                   = "./modules/cloudwatch"
+  project_name             = var.project_name
+  asg_name                 = module.emqx_replicant.asg_name
+  nlb_arn_suffix           = module.nlb.nlb_arn_suffix
   mqtt_target_group_suffix = module.nlb.mqtt_target_group_arn_suffix
-  cpu_alarm_arn          = module.autoscaling.high_cpu_alarm_arn
-  tags                   = local.common_tags
+  cpu_alarm_arn            = module.autoscaling.low_cpu_alarm_arn
+  tags                     = local.common_tags
 }

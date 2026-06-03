@@ -38,13 +38,13 @@ fail() {
 }
 
 install_packages() {
-  log "STEP 1/8: Installing system packages"
+  log "STEP 1/9: Installing system packages"
   apt-get update -y
   apt-get install -y curl gnupg apt-transport-https ca-certificates lsb-release awscli netcat-openbsd
 }
 
 install_emqx() {
-  log "STEP 2/8: Installing EMQX $EMQX_VERSION (DEB -> $EMQX_ETC)"
+  log "STEP 2/9: Installing EMQX $EMQX_VERSION (DEB -> $EMQX_ETC)"
   curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
   apt-get update -y
 
@@ -59,7 +59,6 @@ install_emqx() {
   fi
 
   log "EMQX installed under $EMQX_ETC"
-  log "Config files: $(ls -1 "$EMQX_ETC" | tr '\n' ' ')"
 }
 
 get_private_ip() {
@@ -82,9 +81,17 @@ read_seeds_from_ssm() {
     --output text
 }
 
+publish_cluster_ssm() {
+  local private_ip="$1"
+  local seeds="[emqx@$private_ip]"
+  log "Publishing cluster discovery to SSM ($SSM_CORE_PARAM, $SSM_SEEDS_PARAM)"
+  aws ssm put-parameter --region "$AWS_REGION" --name "$SSM_CORE_PARAM" --value "$private_ip" --type String --overwrite
+  aws ssm put-parameter --region "$AWS_REGION" --name "$SSM_SEEDS_PARAM" --value "$seeds" --type String --overwrite
+}
+
 wait_for_core() {
   local core_ip="$1"
-  log "STEP 3/8: Waiting for core node $core_ip (ports 5369/4370)"
+  log "STEP 3/9: Waiting for core node $core_ip (ports 5369/4370)"
   for attempt in $(seq 1 90); do
     if nc -z "$core_ip" 5369 2>/dev/null || nc -z "$core_ip" 4370 2>/dev/null; then
       log "Core node is reachable on attempt $attempt"
@@ -100,10 +107,12 @@ write_emqx_env() {
   local private_ip="$1"
   local seeds_hocon="$2"
 
-  log "STEP 4/8: Writing EMQX 5.8 overrides to $EMQX_ENV_FILE"
+  log "STEP 4/9: Writing EMQX 5.8 overrides to $EMQX_ENV_FILE"
 
   install -d "$SYSTEMD_DROPIN"
 
+  # EMQX Open Source 5.8+ does not support node.role (Enterprise only).
+  # Operational split: fixed core EC2 + ASG nodes behind NLB; all join one static cluster.
   cat > "$EMQX_ENV_FILE" <<EOF
 EMQX_NODE__NAME="emqx@$private_ip"
 EMQX_NODE__COOKIE="$NODE_COOKIE"
@@ -113,6 +122,8 @@ EMQX_DASHBOARD__DEFAULT_USERNAME="$DASHBOARD_USERNAME"
 EMQX_DASHBOARD__DEFAULT_PASSWORD="$DASHBOARD_PASSWORD"
 EMQX_DASHBOARD__LISTENERS__HTTP__BIND=18083
 EMQX_LISTENERS__TCP__DEFAULT__BIND=0.0.0.0:1883
+EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN=false
+EMQX_MQTT__MAX_PACKET_SIZE=1MB
 EOF
 
   cat > "$SYSTEMD_DROPIN/terraform.conf" <<'EOF'
@@ -125,7 +136,7 @@ EOF
 }
 
 start_emqx() {
-  log "STEP 5/8: Starting EMQX via systemd"
+  log "STEP 5/9: Starting EMQX via systemd"
   systemctl daemon-reload
   systemctl enable emqx
   systemctl restart emqx
@@ -133,7 +144,7 @@ start_emqx() {
 
 wait_for_ports() {
   local require_dashboard="$1"
-  log "STEP 6/8: Waiting for EMQX listeners"
+  log "STEP 6/9: Waiting for EMQX listeners"
 
   for attempt in $(seq 1 60); do
     local mqtt_up=0
@@ -165,52 +176,75 @@ wait_for_ports() {
 }
 
 validate_emqx_service() {
-  log "STEP 7/8: Validating EMQX service"
-  if ! /usr/bin/emqx ctl status 2>&1 | tee -a "$LOG" | grep -qi "is running"; then
-    fail "emqx ctl status reports service is not running"
-  fi
-  log "EMQX service is running"
-}
-
-validate_cluster() {
-  log "STEP 8/8: Validating cluster membership"
-  local status_output
-  status_output="$(/usr/bin/emqx ctl cluster status 2>&1 | tee -a "$LOG")"
-
-  if [[ "$NODE_ROLE" == "core" ]]; then
-    if grep -qE "running_nodes|running_nodes =>" <<< "$status_output"; then
-      log "Core cluster status OK"
-      return 0
-    fi
-    log "WARN: Core cluster status format unexpected; continuing"
-    return 0
-  fi
-
-  for attempt in $(seq 1 30); do
-    status_output="$(/usr/bin/emqx ctl cluster status 2>&1)"
-    echo "$status_output" | tee -a "$LOG"
-
-    if grep -q "emqx@$PRIVATE_IP" <<< "$status_output"; then
-      local node_lines
-      node_lines="$(grep -c "emqx@" <<< "$status_output" || true)"
-      if [[ "$node_lines" -ge 2 ]]; then
-        log "Replicant joined cluster ($node_lines nodes visible)"
+  log "STEP 7/9: Validating EMQX service"
+  for attempt in $(seq 1 20); do
+    if systemctl is-active --quiet emqx 2>/dev/null; then
+      local status_out
+      status_out="$(/usr/bin/emqx ctl status 2>&1 || true)"
+      echo "$status_out" | tee -a "$LOG"
+      if grep -qiE "is running|EMQX .* is running" <<< "$status_out"; then
+        log "EMQX service is running (attempt $attempt)"
         return 0
       fi
     fi
+    sleep 3
+  done
+  if systemctl is-active --quiet emqx && ss -tln | grep -q ':1883'; then
+    log "EMQX active (ports up; ctl status was slow)"
+    return 0
+  fi
+  fail "emqx service not running after validation retries"
+}
 
-    log "Cluster join not confirmed yet (attempt $attempt/30)"
+count_cluster_nodes() {
+  local status_output="$1"
+  grep -oE 'emqx@[0-9a-zA-Z._:-]+' <<< "$status_output" | sort -u | wc -l
+}
+
+validate_cluster() {
+  log "STEP 8/9: Validating cluster membership"
+  local status_output
+  status_output="$(/usr/bin/emqx ctl cluster status 2>&1 | tee -a "$LOG")"
+
+  local node_count
+  node_count="$(count_cluster_nodes "$status_output")"
+
+  if [[ "$NODE_ROLE" == "core" ]]; then
+    if [[ "$node_count" -ge 1 ]]; then
+      log "Core cluster status OK (nodes visible: $node_count)"
+      return 0
+    fi
+    fail "Core cluster status shows no nodes"
+  fi
+
+  for attempt in $(seq 1 36); do
+    status_output="$(/usr/bin/emqx ctl cluster status 2>&1)"
+    echo "$status_output" | tee -a "$LOG"
+
+    node_count="$(count_cluster_nodes "$status_output")"
+    if [[ "$node_count" -ge 2 ]] && grep -qF "emqx@$PRIVATE_IP" <<< "$status_output"; then
+      log "Replicant joined cluster ($node_count unique nodes, this node listed)"
+      return 0
+    fi
+
+    log "Cluster join not confirmed yet (nodes=$node_count, attempt $attempt/36)"
     sleep 10
   done
 
-  fail "Replicant did not join cluster"
+  fail "Replicant did not join cluster (expected >= 2 nodes including emqx@$PRIVATE_IP)"
+}
+
+mark_ready() {
+  log "STEP 9/9: Bootstrap complete"
+  date -Is > "$OK_MARKER"
+  log "READY: role=$NODE_ROLE node=emqx@$PRIVATE_IP"
 }
 
 main() {
   : > "$LOG"
   rm -f "$OK_MARKER"
 
-  log "Bootstrap started (role=$NODE_ROLE, EMQX $EMQX_VERSION, core=$CORE_INSTANCE_ID)"
+  log "Bootstrap started (role=$NODE_ROLE, EMQX $EMQX_VERSION)"
   install_packages
   install_emqx
 
@@ -219,6 +253,7 @@ main() {
 
   if [[ "$NODE_ROLE" == "core" ]]; then
     SEEDS="[emqx@$PRIVATE_IP]"
+    publish_cluster_ssm "$PRIVATE_IP"
     write_emqx_env "$PRIVATE_IP" "$SEEDS"
     start_emqx
     wait_for_ports "true"
@@ -238,8 +273,7 @@ main() {
     validate_cluster
   fi
 
-  date -Is > "$OK_MARKER"
-  log "READY: Bootstrap complete for role=$NODE_ROLE"
+  mark_ready
 }
 
 main "$@"

@@ -101,9 +101,15 @@ variable "replicant_max_size" {
 }
 
 variable "scale_out_network_target_bytes" {
-  description = "Demo: scale out (+1 replicant) when ASG network in exceeds this value (bytes/sec). Step scaling adds one node at a time."
+  description = "Scale out (+1) when NLB/ASG network exceeds this value (bytes/sec). 5000 ~= 300 KB per 60s CloudWatch period."
   type        = number
-  default     = 20000
+  default     = 5000
+}
+
+variable "scale_out_cpu_threshold" {
+  description = "Backup scale-out when ASG average CPU exceeds this percent (MQTT load on t3.small)."
+  type        = number
+  default     = 25
 }
 
 variable "scale_out_network_evaluation_periods" {
@@ -113,21 +119,33 @@ variable "scale_out_network_evaluation_periods" {
 }
 
 variable "autoscaling_cooldown_sec" {
-  description = "Cooldown between demo scale actions (seconds)."
+  description = "Cooldown after scale-out actions (seconds)."
   type        = number
   default     = 60
 }
 
-variable "scale_out_cpu_threshold" {
-  description = "Backup demo scale-out CPU percent (MQTT rarely hits this; network metric is primary)."
+variable "scale_in_cooldown_sec" {
+  description = "Cooldown after scale-in actions. Use 0 for fastest instance removal."
   type        = number
-  default     = 1
+  default     = 0
+}
+
+variable "scale_in_metric_period_sec" {
+  description = "CloudWatch period for scale-in CPU alarm. Use 30 with detailed EC2 monitoring for sub-minute scale-in."
+  type        = number
+  default     = 30
+}
+
+variable "scale_in_evaluation_periods" {
+  description = "Consecutive low-CPU periods required before scale-in. With period=30 and value=2, scale-in triggers in ~60s."
+  type        = number
+  default     = 2
 }
 
 variable "scale_in_cpu_threshold" {
-  description = "Demo scale-in when ASG average CPU is below this percent. Must exceed idle EMQX baseline (~1-2% with multiple nodes)."
+  description = "Scale in (-1) when ASG average CPU stays below this percent for scale_in_evaluation_periods."
   type        = number
-  default     = 3
+  default     = 5
 }
 
 variable "tags" {

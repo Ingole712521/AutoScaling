@@ -26,17 +26,17 @@ output "replicant_asg_name" {
 output "access_summary" {
   description = "Quick reference for URLs, ports, and firewall rules after deploy."
   value = {
-    dashboard_url         = "http://${aws_eip.core_eip.public_ip}:18083"
-    mqtt_nlb              = "${aws_lb.mqtt_nlb.dns_name}:1883"
-    core_public_ip        = aws_eip.core_eip.public_ip
-    dashboard_port        = 18083
-    mqtt_port             = 1883
+    dashboard_url          = "http://${aws_eip.core_eip.public_ip}:18083"
+    mqtt_nlb               = "${aws_lb.mqtt_nlb.dns_name}:1883"
+    core_public_ip         = aws_eip.core_eip.public_ip
+    dashboard_port         = 18083
+    mqtt_port              = 1883
     dashboard_allowed_cidr = var.dashboard_allowed_cidr
-    ssh_allowed_cidr      = var.ssh_allowed_cidr
-    autoscaling           = "Network > ${var.scale_out_network_target_bytes} bytes/sec (+1) OR CPU > ${var.scale_out_cpu_threshold}% (+1) scale out; CPU < ${var.scale_in_cpu_threshold}% (-1) scale in; min=${var.replicant_min_size} max=${var.replicant_max_size}"
-    emqx_version          = var.emqx_version
-    bootstrap_log         = "/var/log/emqx-bootstrap.log on each instance"
-    config_method         = "EMQX 5.8 env overrides via /etc/emqx/terraform.env + systemd drop-in"
+    ssh_allowed_cidr       = var.ssh_allowed_cidr
+    autoscaling            = "Network > ${var.scale_out_network_target_bytes} B/s or CPU > ${var.scale_out_cpu_threshold}% (+1); CPU < ${var.scale_in_cpu_threshold}% (-1); min=${var.replicant_min_size} max=${var.replicant_max_size}"
+    emqx_version           = var.emqx_version
+    bootstrap_log          = "/var/log/emqx-bootstrap.log on each instance"
+    config_method          = "EMQX 5.8 env overrides via /etc/emqx/terraform.env + systemd drop-in"
   }
 }
 

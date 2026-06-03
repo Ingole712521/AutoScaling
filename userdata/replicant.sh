@@ -1,60 +1,91 @@
 #!/bin/bash
-set -euxo pipefail
+# EMQX 5.8.x replicant — joins core cluster via Route53 seeds, serves NLB MQTT traffic.
+set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update -y
-apt-get install -y curl unzip jq ca-certificates gnupg apt-transport-https lsb-release
+LOG="/var/log/emqx-bootstrap.log"
+OK_MARKER="/var/log/emqx-bootstrap.ok"
+EMQX_ENV_FILE="/etc/emqx/terraform.env"
+SYSTEMD_DROPIN="/etc/systemd/system/emqx.service.d"
 
-# Install EMQX 5.x
+log() { echo "[$(date -Is)] $*" | tee -a "$LOG"; }
+fail() { log "ERROR: $*"; journalctl -u emqx --no-pager -n 50 || true; exit 1; }
+
+log "Replicant bootstrap started"
+: > "$LOG"
+rm -f "$OK_MARKER"
+
+apt-get update -y
+apt-get install -y curl gnupg apt-transport-https ca-certificates lsb-release netcat-openbsd jq
+
 curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
 apt-get update -y
 apt-get install -y emqx
 
-# Install CloudWatch agent for memory metrics
-wget -O /tmp/amazon-cloudwatch-agent.deb https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
-dpkg -i /tmp/amazon-cloudwatch-agent.deb
+PRIVATE_IP=$(curl -sf http://169.254.169.254/latest/meta-data/local-ipv4)
+log "Private IP: $PRIVATE_IP"
 
-cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCFG'
-{
-  "metrics": {
-    "append_dimensions": {
-      "AutoScalingGroupName": "${aws:AutoScalingGroupName}"
-    },
-    "metrics_collected": {
-      "mem": {
-        "measurement": [
-          "mem_used_percent"
-        ]
-      }
-    }
-  }
-}
-CWCFG
+# Wait for at least one core seed (Erlang distribution ports).
+FIRST_SEED=$(echo ${seed_nodes} | jq -r '.[0]')
+SEED_HOST="${FIRST_SEED#emqx@}"
+log "Waiting for core seed $SEED_HOST (ports 5369/4370)"
 
-/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+for attempt in $(seq 1 90); do
+  CORE_IP=$(getent hosts "$SEED_HOST" | awk '{print $1}' | head -1)
+  if [[ -n "$CORE_IP" ]] && { nc -z "$CORE_IP" 5369 2>/dev/null || nc -z "$CORE_IP" 4370 2>/dev/null; }; then
+    log "Core reachable at $CORE_IP (attempt $attempt)"
+    break
+  fi
+  log "Core not ready (attempt $attempt/90)"
+  sleep 10
+done
 
-PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+CORE_IP=$(getent hosts "$SEED_HOST" | awk '{print $1}' | head -1)
+if [[ -z "$CORE_IP" ]] || ! { nc -z "$CORE_IP" 5369 2>/dev/null || nc -z "$CORE_IP" 4370 2>/dev/null; }; then
+  fail "Timed out waiting for core $SEED_HOST"
+fi
 
-cat > /etc/emqx/emqx.conf <<EOF
-node {
-  name = "emqx@$${PRIVATE_IP}"
-  cookie = "${node_cookie}"
-  role = replicant
-}
-
-cluster {
-  discovery_strategy = static
-  static {
-    seeds = ${seed_nodes}
-  }
-}
-
-dashboard {
-  default_username = "${dashboard_username}"
-  default_password = "${dashboard_password}"
-}
+install -d "$SYSTEMD_DROPIN"
+cat > "$EMQX_ENV_FILE" <<EOF
+EMQX_NODE__NAME="emqx@$PRIVATE_IP"
+EMQX_NODE__COOKIE="${node_cookie}"
+EMQX_CLUSTER__DISCOVERY_STRATEGY=static
+EMQX_CLUSTER__STATIC__SEEDS=${seed_nodes}
+EMQX_DASHBOARD__DEFAULT_USERNAME="${dashboard_username}"
+EMQX_DASHBOARD__DEFAULT_PASSWORD="${dashboard_password}"
+EMQX_LISTENERS__TCP__DEFAULT__BIND=0.0.0.0:1883
+EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN=false
+EMQX_MQTT__MAX_PACKET_SIZE=1MB
 EOF
 
+cat > "$SYSTEMD_DROPIN/terraform.conf" <<'EOF'
+[Service]
+EnvironmentFile=-/etc/emqx/terraform.env
+EOF
+
+chmod 600 "$EMQX_ENV_FILE"
+systemctl daemon-reload
 systemctl enable emqx
 systemctl restart emqx
-sleep 15
+
+for attempt in $(seq 1 60); do
+  if ss -tln | grep -q ':1883'; then
+    log "MQTT listener up"
+    break
+  fi
+  sleep 10
+done
+
+for attempt in $(seq 1 36); do
+  STATUS=$(/usr/bin/emqx ctl cluster status 2>&1 || true)
+  NODE_COUNT=$(grep -oE 'emqx@[0-9a-zA-Z._:-]+' <<< "$STATUS" | sort -u | wc -l)
+  if [[ "$NODE_COUNT" -ge 2 ]] && grep -qF "emqx@$PRIVATE_IP" <<< "$STATUS"; then
+    log "Joined cluster ($NODE_COUNT nodes)"
+    date -Is > "$OK_MARKER"
+    exit 0
+  fi
+  log "Waiting for cluster join (nodes=$NODE_COUNT, attempt $attempt/36)"
+  sleep 10
+done
+
+fail "Replicant did not join cluster"

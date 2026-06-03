@@ -14,13 +14,13 @@ Internet
          │  target group (healthy = MQTT :1883)
          ▼
 ┌─────────────────────────────┐
-│  ASG: replicants (1–4)      │  EMQX role=replicant, join via SSM seeds
+│  ASG: replicants (1–4)      │  OSS peer nodes, join via SSM seeds
 │  public subnets, ELB health  │
 └────────┬────────────────────┘
          │  cluster (5369/4370)
          ▼
 ┌─────────────────────────────┐
-│  EC2 core (1 node + EIP)    │  EMQX role=core, dashboard :18083
+│  EC2 core (1 node + EIP)    │  OSS peer node, dashboard :18083
 │  publishes SSM discovery    │
 └─────────────────────────────┘
 ```
@@ -58,7 +58,7 @@ terraform apply
 
 | Action | Trigger |
 |--------|---------|
-| **Scale out +1** | NLB `ProcessedBytes` **or** ASG `NetworkIn` (Maximum) > 20 KB/s for **2×60s** |
+| **Scale out +1** | NLB `ProcessedBytes` **or** ASG `NetworkIn` (Maximum) > ~5 KB/s for **2×60s**, or CPU > 25% |
 | **Scale in -1** | ASG average CPU < **5%** for **2×30s** |
 | **Cooldown** | 60s scale-out; 0s scale-in |
 | **Bounds** | min=1, max=4 replicants |
@@ -70,8 +70,9 @@ Step scaling avoids jumping to max on `terraform apply`. The staged load test dr
 1. `.\scripts\verify_deployment.ps1` — ports + MQTT probe + NLB health  
 2. `.\scripts\prove_emqx_cluster.ps1` — cluster API, NLB, load spread  
 3. `.\scripts\run_staged_load_test.ps1 -FromTerraform` — autoscaling demo  
+4. `.\scripts\run_sustained_load_test.ps1 -FromTerraform -Clients 200` — sustained load until Ctrl+C  
 
-See [`docs/PROOF-CHECKLIST.md`](docs/PROOF-CHECKLIST.md).
+See [`docs/PROOF-CHECKLIST.md`](docs/PROOF-CHECKLIST.md) and [`docs/COMMANDS-REFERENCE.txt`](docs/COMMANDS-REFERENCE.txt).
 
 ## Load distribution
 

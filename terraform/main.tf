@@ -90,7 +90,6 @@ module "nlb" {
   vpc_id            = module.vpc.vpc_id
   public_subnet_ids = module.vpc.public_subnet_ids
   nlb_sg_id         = module.security_groups.nlb_sg_id
-  replicant_sg_id   = module.security_groups.replicant_sg_id
   tags              = local.common_tags
 }
 
@@ -101,9 +100,7 @@ module "emqx_replicant" {
   replicant_sg_id       = module.security_groups.replicant_sg_id
   key_name              = module.keypair.key_name
   instance_profile_name = module.iam.instance_profile_name
-  # MQTT TLS (8883) is not configured on replicants; only register the plain MQTT target group.
   target_group_arns                = [module.nlb.mqtt_target_group_arn]
-  zone_name                        = module.route53.zone_name
   node_cookie                      = var.emqx_node_cookie
   dashboard_username               = var.emqx_dashboard_username
   dashboard_password               = var.emqx_dashboard_password
@@ -120,11 +117,9 @@ module "autoscaling" {
   source                          = "./modules/autoscaling"
   project_name                    = var.project_name
   asg_name                        = module.emqx_replicant.asg_name
-  min_capacity                    = 1
-  max_capacity                    = 4
   nlb_arn_suffix                  = module.nlb.nlb_arn_suffix
   scale_in_cpu_threshold          = 5
-  scale_out_network_bytes_per_sec = 20480
+  scale_out_network_bytes_per_sec = 5000
   scale_in_metric_period_sec      = 30
   scale_in_evaluation_periods     = 2
   scale_in_cooldown_sec           = 0

@@ -31,3 +31,7 @@ terraform.rc
 # Keep this file if you want consistent provider versions across the team.
 # Remove the line below if you want to commit it.
 .terraform.lock.hcl
+
+# Python
+__pycache__/
+*.py[cod]

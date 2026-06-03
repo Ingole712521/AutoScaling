@@ -1,36 +1,31 @@
-# EMQX on AWS - Architecture
+# EMQX on AWS — Architecture
 
-## Mermaid Diagram
+## Root stack (primary)
+
+Single core EC2 + ASG replicants behind an internet-facing NLB on **MQTT :1883**.
 
 ```mermaid
 flowchart LR
-  clients["MQTT Clients"] --> nlb["NLB :1883/:8883"]
-  nlb --> asg["Replicant ASG (1-4)"]
-  asg --> r1["Replicant Node(s)"]
-  r1 --> c1["Core-1"]
-  r1 --> c2["Core-2"]
-  r1 --> c3["Core-3"]
-
-  subgraph PrivateDNS["Route53 Private Zone: emqx.internal"]
-    d1["core1.emqx.internal"]
-    d2["core2.emqx.internal"]
-    d3["core3.emqx.internal"]
-  end
-
-  c1 --- d1
-  c2 --- d2
-  c3 --- d3
-
-  cw["CloudWatch Dashboard + Alarms"] --- asg
+  clients["MQTT clients"] --> nlb["NLB :1883"]
+  nlb --> asg["Replicant ASG 1-4"]
+  asg --> rep["Replicant nodes"]
+  rep --> core["Core EC2 + EIP"]
+  core --> ssm["SSM discovery params"]
+  cw["CloudWatch alarms"] --- asg
   cw --- nlb
-  ssm["SSM Session Manager"] --- c1
-  ssm --- asg
 ```
 
-## Design Notes
+- Core is **not** in the NLB target group (dashboard on `:18083`).
+- EMQX 5.8 OSS: all nodes are peer cluster members (no Enterprise `node.role`).
+- Replicants join using SSM-published cluster seeds from the core.
 
-- Core nodes are fixed and never auto-scaled.
-- Replicant nodes are auto-scaled for client-facing MQTT load.
-- NLB only forwards traffic to replicants.
-- Route53 private DNS provides stable cluster seed discovery.
-- SSM is enabled for SSH-less operations while SSH is also available for interview troubleshooting.
+## Modular stack (`terraform/`)
+
+Optional layout: **3 core** nodes in private subnets, Route53 zone `emqx.internal`, replicants in private subnets. Same NLB + autoscaling pattern; apply from `terraform/` directory.
+
+```mermaid
+flowchart LR
+  clients["MQTT clients"] --> nlb["NLB :1883"]
+  nlb --> asg["Replicant ASG"]
+  asg --> cores["Core x3 via Route53"]
+```

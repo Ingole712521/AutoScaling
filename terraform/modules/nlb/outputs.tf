@@ -13,7 +13,3 @@ output "mqtt_target_group_arn" {
 output "mqtt_target_group_arn_suffix" {
   value = aws_lb_target_group.mqtt.arn_suffix
 }
-
-output "mqtt_tls_target_group_arn" {
-  value = aws_lb_target_group.mqtt_tls.arn
-}

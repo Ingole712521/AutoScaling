@@ -11,14 +11,6 @@ resource "aws_security_group" "nlb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    description = "MQTT TLS TCP"
-    from_port   = 8883
-    to_port     = 8883
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -77,14 +69,6 @@ resource "aws_security_group" "replicant" {
     description     = "MQTT from NLB"
     from_port       = 1883
     to_port         = 1883
-    protocol        = "tcp"
-    security_groups = [aws_security_group.nlb.id]
-  }
-
-  ingress {
-    description     = "MQTT TLS from NLB"
-    from_port       = 8883
-    to_port         = 8883
     protocol        = "tcp"
     security_groups = [aws_security_group.nlb.id]
   }

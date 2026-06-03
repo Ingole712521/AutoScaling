@@ -136,7 +136,10 @@ Gentler (recommended for stable errors=0):
   $env:MESSAGES_PER_BURST = "3"
   powershell -ExecutionPolicy Bypass -File .\scripts\run_sustained_load_test.ps1 -FromTerraform -Clients 100
 
-Git Bash:
+Git Bash (wrapper):
+  FROM_TERRAFORM=true CLIENTS=200 ./scripts/run_sustained_load_test.sh
+
+Git Bash (direct):
   export MQTT_HOST=$(terraform output -raw mqtt_nlb_dns_name)
   export ASG_NAME=$(terraform output -raw replicant_asg_name)
   export AWS_REGION=ap-south-1

@@ -17,7 +17,6 @@ resource "aws_lb_target_group" "mqtt" {
   vpc_id      = var.vpc_id
   target_type = "instance"
 
-  # Drop long-lived MQTT flows when a replicant is removed so NLB can rebalance.
   deregistration_delay = 10
 
   health_check {
@@ -28,21 +27,6 @@ resource "aws_lb_target_group" "mqtt" {
   tags = merge(var.tags, { Name = "${var.project_name}-tg-1883" })
 }
 
-resource "aws_lb_target_group" "mqtt_tls" {
-  name        = "${var.project_name}-mqtt-8883"
-  port        = 8883
-  protocol    = "TCP"
-  vpc_id      = var.vpc_id
-  target_type = "instance"
-
-  health_check {
-    protocol = "TCP"
-    port     = "1883"
-  }
-
-  tags = merge(var.tags, { Name = "${var.project_name}-tg-8883" })
-}
-
 resource "aws_lb_listener" "mqtt" {
   load_balancer_arn = aws_lb.this.arn
   port              = 1883
@@ -51,16 +35,5 @@ resource "aws_lb_listener" "mqtt" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.mqtt.arn
-  }
-}
-
-resource "aws_lb_listener" "mqtt_tls" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 8883
-  protocol          = "TCP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.mqtt_tls.arn
   }
 }

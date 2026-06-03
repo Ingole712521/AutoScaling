@@ -50,7 +50,7 @@ function Show-DeploySummary {
     Write-Host "  - Port 22    (SSH)       open per ssh_allowed_cidr"
     Write-Host ""
     Write-Host "Autoscaling (step +1/-1):"
-    Write-Host "  - Scale OUT +1 when NLB/ASG network > 20 KB/s for 2 minutes"
+    Write-Host "  - Scale OUT +1 when NLB/ASG network > ~5 KB/s for 2 minutes (or CPU > 25%)"
     Write-Host "  - Scale IN  -1 when CPU < 5% for ~60 seconds"
     Write-Host "  - Scale-out cooldown: 60 seconds"
     Write-Host "  - Replicants: min 1, max 4"

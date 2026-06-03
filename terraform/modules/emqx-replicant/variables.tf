@@ -4,7 +4,6 @@ variable "replicant_sg_id" { type = string }
 variable "key_name" { type = string }
 variable "instance_profile_name" { type = string }
 variable "target_group_arns" { type = list(string) }
-variable "zone_name" { type = string }
 variable "node_cookie" { type = string }
 variable "dashboard_username" { type = string }
 variable "dashboard_password" { type = string }

@@ -58,12 +58,11 @@ Write-Host "Installing dependencies..."
 Install-PythonRequirements -ProjectRoot $Root | Out-Null
 
 Write-Host "MQTT preflight..."
-Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $MqttHost
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Preflight failed. Run: .\scripts\fix_mqtt_anonymous_ssm.ps1 then .\scripts\prove_emqx_cluster.ps1" -ForegroundColor Yellow
+$probeExit = Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $MqttHost
+if ($probeExit -ne 0) {
+    Write-Host "Preflight failed. Run: ./scripts/fix_mqtt_anonymous_ssm.ps1 then ./scripts/prove_emqx_cluster.ps1" -ForegroundColor Yellow
     exit 1
 }
-
 $env:PYTHONUNBUFFERED = "1"
 Write-Host "Starting staged load test on $MqttHost"
 $pyArgs = @(
@@ -77,6 +76,5 @@ $pyArgs = @(
 if (-not [string]::IsNullOrWhiteSpace($AsgName)) {
     $pyArgs += @("--asg-name", $AsgName)
 }
-Invoke-ProjectPython -ProjectRoot $Root @pyArgs
-
-exit $LASTEXITCODE
+$exitCode = Invoke-ProjectPython -ProjectRoot $Root @pyArgs
+exit $exitCode

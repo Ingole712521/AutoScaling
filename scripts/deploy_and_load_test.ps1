@@ -95,7 +95,7 @@ if (-not $SkipApply) {
         Write-Host "terraform.tfstate is locked by another process." -ForegroundColor Yellow
         Write-Host "Wait for any running 'terraform apply/plan' to finish, then retry."
         Write-Host "Or run with -SkipApply if apply already completed:"
-        Write-Host '  powershell -ExecutionPolicy Bypass -File .\scripts\deploy_and_load_test.ps1 -SkipApply'
+        Write-Host '  pwsh -File ./scripts/deploy_and_load_test.ps1 -SkipApply'
         Write-Host ""
         throw "Terraform state file is locked."
     }

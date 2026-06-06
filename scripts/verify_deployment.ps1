@@ -42,7 +42,7 @@ if (Get-Command aws -ErrorAction SilentlyContinue) {
         if ($states -match "initial|draining") {
             Write-Host ""
             Write-Host "Note: MQTT via NLB fails until a target is 'healthy' (bootstrap ~5-15 min)." -ForegroundColor Yellow
-            Write-Host "      Watch: .\scripts\watch_bootstrap.ps1" -ForegroundColor Yellow
+            Write-Host "      Watch: ./scripts/watch_bootstrap.ps1 (or ./scripts/watch_bootstrap.sh)" -ForegroundColor Yellow
         }
         if ($states -match "unhealthy") {
             Write-Host ""
@@ -53,7 +53,7 @@ if (Get-Command aws -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
-Write-Host "Full proof: .\scripts\prove_emqx_cluster.ps1" -ForegroundColor Cyan
+Write-Host "Full proof: ./scripts/prove_emqx_cluster.ps1 (or ./scripts/prove_emqx_cluster.sh)" -ForegroundColor Cyan
 
 if ($dashboardOpen -and $mqttOpen) { exit 0 }
 exit 1

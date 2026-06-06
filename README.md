@@ -96,7 +96,25 @@ Optional:
 | **SSH client** | Troubleshoot EC2 (`ssh -i key.pem ubuntu@<core-ip>`) |
 
 **AWS permissions:** IAM user/role with EC2, VPC, ELB, Auto Scaling, CloudWatch, SSM, and IAM (for instance profiles).  
-**Python on macOS/Linux:** Scripts create a project `.venv/` on first run (PEP 668 safe; gitignored). Windows uses system Python by default.
+**Python:** All platforms use a project `.venv/` (auto-created on first run; gitignored). Same dependencies everywhere.
+
+### Cross-platform script reference
+
+Every workflow has **two equivalent entry points** — use whichever fits your shell:
+
+| Task | PowerShell (all OS) | Bash (macOS / Linux / Git Bash / WSL) |
+|------|---------------------|----------------------------------------|
+| Full deploy + load | `pwsh -File ./scripts/deploy_and_load_test.ps1` | `bash ./scripts/deploy_and_load_test.sh` |
+| Watch bootstrap | `pwsh -File ./scripts/watch_bootstrap.ps1` | `bash ./scripts/watch_bootstrap.sh` |
+| Verify deployment | `pwsh -File ./scripts/verify_deployment.ps1` | `bash ./scripts/verify_deployment.sh` |
+| Full proof | `pwsh -File ./scripts/prove_emqx_cluster.ps1 -DashboardPassword "..."` | `bash ./scripts/prove_emqx_cluster.sh -DashboardPassword "..."` |
+| Staged load test | `pwsh -File ./scripts/run_staged_load_test.ps1 -FromTerraform` | `FROM_TERRAFORM=true bash ./scripts/run_staged_load_test.sh` |
+| Sustained load test | `pwsh -File ./scripts/run_sustained_load_test.ps1 -FromTerraform -Clients 100` | `FROM_TERRAFORM=true CLIENTS=100 bash ./scripts/run_sustained_load_test.sh` |
+| Fix MQTT auth (SSM) | `pwsh -File ./scripts/fix_mqtt_anonymous_ssm.ps1` | `bash ./scripts/fix_mqtt_anonymous_ssm.sh` |
+
+**Supported environments:** Windows 10/11 (PowerShell 5.1 or `pwsh`), macOS (Intel/Apple Silicon), Linux (Ubuntu/Debian/Fedora), WSL2, Git Bash.
+
+**Shared libraries:** `scripts/lib/PlatformHelpers.ps1` (port tests, venv, browser) and `scripts/lib/common.sh` + `ensure_venv.sh` (Bash parity).
 
 ---
 
@@ -540,9 +558,10 @@ aws autoscaling start-instance-refresh \
 | `terraform.tfvars.example` | Template for secrets and sizing |
 | `userdata/emqx-bootstrap.sh` | Core + replicant install, join, validation |
 | `scripts/*.ps1` | Deploy, verify, prove, load test (PowerShell Core) |
-| `scripts/*.sh` | Bash wrappers for Git Bash / Linux |
-| `scripts/lib/PlatformHelpers.ps1` | Cross-platform port tests, Python venv, browser |
-| `scripts/lib/ensure_venv.sh` | Bash venv helper for macOS/Linux |
+| `scripts/*.sh` | Bash wrappers — same behavior on macOS, Linux, Git Bash, WSL |
+| `scripts/lib/PlatformHelpers.ps1` | Cross-platform port tests, Python `.venv`, browser, terminals |
+| `scripts/lib/common.sh` | Shared Bash helpers (`emqx_run_pwsh`, terraform output) |
+| `scripts/lib/ensure_venv.sh` | Creates/returns `.venv` Python on any OS |
 | `loadtest/staged_load.py` | Staged / sustained MQTT load via NLB |
 | `loadtest/requirements.txt` | `paho-mqtt`, `requests` |
 | `terraform/` | Optional modular stack (3 cores, private subnets) |

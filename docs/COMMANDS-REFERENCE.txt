@@ -5,16 +5,15 @@ Project root: repo root (where terraform.tfvars lives)
 Region: ap-south-1
 Stack: terraform apply from repo ROOT (not terraform/ subfolder for scripts)
 
-Use PowerShell Core (pwsh) for .ps1 scripts on Windows and macOS.
+Use PowerShell Core (pwsh) or Bash (.sh) scripts — both work on Windows, macOS, and Linux.
 Use Git Bash for aws commands with backslash (\).
 In PowerShell, use backtick (`) for line continuation, NOT backslash (\).
 
-macOS notes:
-  - Install: brew install powershell python terraform awscli
-  - Run scripts: pwsh -File ./scripts/watch_bootstrap.ps1
-  - Python deps auto-install into .venv/ (created on first run; gitignored)
-  - Port checks use Test-TcpPortOpen (not Windows-only Test-NetConnection)
-
+Cross-platform:
+  - PowerShell: pwsh -File ./scripts/<name>.ps1
+  - Bash:       bash ./scripts/<name>.sh   (Git Bash, macOS, Linux, WSL)
+  - Python deps: auto-installed into .venv/ on all platforms (gitignored)
+  - Port checks: Test-TcpPortOpen in PlatformHelpers.ps1 (not Test-NetConnection)
 ================================================================================
 1) ONE-TIME SETUP (before first deploy)
 ================================================================================

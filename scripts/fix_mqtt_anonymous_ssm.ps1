@@ -29,4 +29,4 @@ foreach ($id in $ids.Split()) {
     aws ssm get-command-invocation --region $Region --command-id $cmdId --instance-id $id `
         --query StandardOutputContent --output text
 }
-Write-Host "Done. Run: .\scripts\prove_emqx_cluster.ps1"
+Write-Host "Done. Run: ./scripts/prove_emqx_cluster.ps1"

@@ -48,8 +48,8 @@ Write-Host "Installing dependencies..."
 Install-PythonRequirements -ProjectRoot $Root | Out-Null
 
 Write-Host "MQTT preflight..."
-Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $MqttHost
-if ($LASTEXITCODE -ne 0) { exit 1 }
+$probeExit = Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $MqttHost
+if ($probeExit -ne 0) { exit 1 }
 
 Write-Host ""
 Write-Host "Starting $Clients clients on $MqttHost - press Ctrl+C to stop." -ForegroundColor Green
@@ -68,6 +68,5 @@ $pyArgs = @(
 if (-not [string]::IsNullOrWhiteSpace($AsgName)) {
     $pyArgs += @("--asg-name", $AsgName)
 }
-Invoke-ProjectPython -ProjectRoot $Root @pyArgs
-
-exit $LASTEXITCODE
+$exitCode = Invoke-ProjectPython -ProjectRoot $Root @pyArgs
+exit $exitCode

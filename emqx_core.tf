@@ -15,12 +15,18 @@ data "aws_ami" "ubuntu_2204" {
 
 locals {
   emqx_bootstrap_base = {
-    node_cookie        = var.emqx_node_cookie
-    dashboard_username = var.emqx_dashboard_username
-    dashboard_password = var.emqx_dashboard_password
-    aws_region         = var.aws_region
-    project_name       = var.project_name
-    emqx_version       = var.emqx_version
+    node_cookie              = var.emqx_node_cookie
+    dashboard_username       = var.emqx_dashboard_username
+    dashboard_password       = var.emqx_dashboard_password
+    aws_region               = var.aws_region
+    project_name             = var.project_name
+    emqx_version             = var.emqx_version
+    tune_nofile              = var.emqx_tune_nofile
+    tune_max_ports           = var.emqx_tune_max_ports
+    tune_acceptors           = var.emqx_tune_acceptors
+    tune_max_connections     = var.emqx_tune_max_connections
+    tune_dist_buffer_size_kb = var.emqx_tune_dist_buffer_size_kb
+    performance_tune_lib     = file("${path.module}/userdata/emqx-performance-tune.sh")
   }
 }
 

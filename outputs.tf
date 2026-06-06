@@ -35,6 +35,9 @@ output "access_summary" {
     ssh_allowed_cidr       = var.ssh_allowed_cidr
     autoscaling            = "Network > ${var.scale_out_network_target_bytes} B/s or CPU > ${var.scale_out_cpu_threshold}% (+1); CPU < ${var.scale_in_cpu_threshold}% (-1); min=${var.replicant_min_size} max=${var.replicant_max_size}"
     emqx_version           = var.emqx_version
+    performance_tuning     = "Applied at bootstrap per docs.emqx.com/performance/tune (sysctl, limits, EMQX listener/session caps)"
+    tune_nofile            = var.emqx_tune_nofile
+    tune_max_connections   = var.emqx_tune_max_connections
     bootstrap_log          = "/var/log/emqx-bootstrap.log on each instance"
     config_method          = "EMQX 5.8 env overrides via /etc/emqx/terraform.env + systemd drop-in"
   }

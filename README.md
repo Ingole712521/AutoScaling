@@ -74,6 +74,31 @@ Optional modular stack (3 cores, private subnets): [`terraform/`](terraform/) �
 | **Cooldown** | 60s scale-out; 0s scale-in |
 | **Bounds** | min = 1, max = 4 replicants |
 
+### Performance tuning (bootstrap)
+
+All EC2 nodes apply [EMQX Linux performance tuning](https://docs.emqx.com/en/emqx/latest/performance/tune.html) during user-data bootstrap via `userdata/emqx-performance-tune.sh`:
+
+| Layer | Settings applied |
+|-------|------------------|
+| **Swap** | Disabled (`swapoff`, commented in `/etc/fstab`) |
+| **File descriptors** | `fs.file-max`, `limits.conf`, systemd `LimitNOFILE` (default 2,097,152) |
+| **Process limits** | `nproc` limits + systemd `LimitNPROC` |
+| **TCP / kernel** | `somaxconn`, `tcp_max_syn_backlog`, `netdev_max_backlog`, port range, socket buffers, `tcp_fin_timeout`, conntrack (when available) |
+| **EMQX VM** | `node.max_ports`, core-only `node.dist_buffer_size` |
+| **EMQX MQTT** | Listener `acceptors` + `max_connections`, session `max_inflight`, `max_awaiting_rel` |
+
+Tune via `terraform.tfvars` (optional):
+
+```hcl
+emqx_tune_nofile              = 2097152
+emqx_tune_max_ports           = 2097152
+emqx_tune_acceptors           = 64
+emqx_tune_max_connections     = 1024000
+emqx_tune_dist_buffer_size_kb = 2097151   # core node only
+```
+
+Validation is logged to `/var/log/emqx-bootstrap.log` (`PERF:` lines). After deploy, instance refresh replicants if you change tuning values.
+
 ---
 
 ## Prerequisites
@@ -525,6 +550,7 @@ Full command reference: [`docs/COMMANDS-REFERENCE.txt`](docs/COMMANDS-REFERENCE.
 | NLB targets `initial` / `unhealthy` | Bootstrap takes 5–15 min; `sudo tail -50 /var/log/emqx-bootstrap.log` on core via SSH |
 | Anonymous MQTT auth on old instances | `pwsh -File ./scripts/fix_mqtt_anonymous_ssm.ps1` |
 | Changed userdata / bootstrap script | Instance refresh: see [`docs/COMMANDS-REFERENCE.txt`](docs/COMMANDS-REFERENCE.txt) §12 |
+| Verify performance tuning on a node | `grep PERF /var/log/emqx-bootstrap.log` and `sysctl fs.file-max net.core.somaxconn` |
 | Scale stayed at 1 during load | Check CloudWatch alarms; increase client count or run sustained test longer |
 | Stopped nodes in dashboard | SSH to core: `sudo emqx ctl cluster status`; force-leave dead nodes |
 | `python` not found (macOS) | Use `python3` or run any `.ps1` script first (creates `.venv`) |
@@ -557,6 +583,7 @@ aws autoscaling start-instance-refresh \
 | `*.tf` (root) | Primary stack: VPC, core, NLB, ASG, autoscaling |
 | `terraform.tfvars.example` | Template for secrets and sizing |
 | `userdata/emqx-bootstrap.sh` | Core + replicant install, join, validation |
+| `userdata/emqx-performance-tune.sh` | OS + EMQX performance tuning (sysctl, limits, listener caps) |
 | `scripts/*.ps1` | Deploy, verify, prove, load test (PowerShell Core) |
 | `scripts/*.sh` | Bash wrappers — same behavior on macOS, Linux, Git Bash, WSL |
 | `scripts/lib/PlatformHelpers.ps1` | Cross-platform port tests, Python `.venv`, browser, terminals |

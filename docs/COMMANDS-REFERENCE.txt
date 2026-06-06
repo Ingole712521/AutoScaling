@@ -1,12 +1,19 @@
 ================================================================================
 EMQX AWS PROJECT - COMMAND REFERENCE
 ================================================================================
-Project root: D:\Nehal\Project\emqx\job
+Project root: repo root (where terraform.tfvars lives)
 Region: ap-south-1
 Stack: terraform apply from repo ROOT (not terraform/ subfolder for scripts)
 
-Use PowerShell for .ps1 scripts. Use Git Bash for aws commands with backslash (\).
+Use PowerShell Core (pwsh) for .ps1 scripts on Windows and macOS.
+Use Git Bash for aws commands with backslash (\).
 In PowerShell, use backtick (`) for line continuation, NOT backslash (\).
+
+macOS notes:
+  - Install: brew install powershell python terraform awscli
+  - Run scripts: pwsh -File ./scripts/watch_bootstrap.ps1
+  - Python deps auto-install into .venv/ (created on first run; gitignored)
+  - Port checks use Test-TcpPortOpen (not Windows-only Test-NetConnection)
 
 ================================================================================
 1) ONE-TIME SETUP (before first deploy)
@@ -14,9 +21,9 @@ In PowerShell, use backtick (`) for line continuation, NOT backslash (\).
 WHEN: First time only, or after cloning the repo.
 WHERE: Project root.
 
-  cd D:\Nehal\Project\emqx\job
-  copy terraform.tfvars.example terraform.tfvars
-
+  cd <project-root>
+  copy terraform.tfvars.example terraform.tfvars   # Windows
+  cp terraform.tfvars.example terraform.tfvars     # macOS / Linux
 Edit terraform.tfvars:
   - emqx_node_cookie
   - emqx_dashboard_password
@@ -28,8 +35,7 @@ Edit terraform.tfvars:
 WHEN: Create or update VPC, core, NLB, ASG, autoscaling alarms.
 WHERE: Project root.
 
-  cd D:\Nehal\Project\emqx\job
-  terraform init
+  cd <project-root>  terraform init
   terraform apply
 
 WHEN: Remove everything and stop AWS charges.
@@ -50,34 +56,29 @@ Get outputs (NLB DNS, core IP, dashboard URL):
 WHEN: Right after terraform apply, before MQTT tests.
 WHERE: Project root. Needs AWS CLI + SSM for live logs.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\watch_bootstrap.ps1
-
+  pwsh -File ./scripts/watch_bootstrap.ps1
 WHEN: Apply finished but you skipped watch - quick port check.
 WHERE: Project root.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\verify_deployment.ps1
-
+  pwsh -File ./scripts/verify_deployment.ps1
 ================================================================================
 4) FULL DEPLOY + DASHBOARD + LOAD TEST (automated)
 ================================================================================
 WHEN: One-shot demo: apply + bootstrap wait + open dashboard + staged load.
 WHERE: Project root.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\deploy_and_load_test.ps1
-
+  pwsh -File ./scripts/deploy_and_load_test.ps1
 WHEN: Infrastructure already applied; skip terraform.
 WHERE: Project root.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\deploy_and_load_test.ps1 -SkipApply
-
+  pwsh -File ./scripts/deploy_and_load_test.ps1 -SkipApply
 ================================================================================
 5) MQTT QUICK TEST (single client via NLB)
 ================================================================================
 WHEN: Fast check that NLB and broker accept connections.
 WHERE: Project root. Run BEFORE heavy load tests.
 
-  cd D:\Nehal\Project\emqx\job
-  python -m pip install -q -r loadtest/requirements.txt
+  cd <project-root>  python -m pip install -q -r loadtest/requirements.txt
   python scripts/mqtt_probe.py --host <NLB-DNS-FROM-TERRAFORM-OUTPUT>
 
 Example (replace with your NLB DNS):
@@ -91,11 +92,9 @@ Expected: OK: connected and published
 WHEN: Submission proof - run after bootstrap and mqtt_probe OK.
 WHERE: Project root. PowerShell only for .ps1 wrapper.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\prove_emqx_cluster.ps1 -DashboardPassword "YOUR_PASSWORD"
-
+  pwsh -File ./scripts/prove_emqx_cluster.ps1 -DashboardPassword "YOUR_PASSWORD"
 Optional more clients (when ASG has 2+ replicants):
-  powershell -ExecutionPolicy Bypass -File .\scripts\prove_emqx_cluster.ps1 -DashboardPassword "YOUR_PASSWORD" -LoadClients 50
-
+  pwsh -File ./scripts/prove_emqx_cluster.ps1 -DashboardPassword "YOUR_PASSWORD" -LoadClients 50
 Git Bash alternative (set password yourself):
   export EMQX_CORE_IP=$(terraform output -raw emqx_core_public_ip)
   export MQTT_HOST=$(terraform output -raw mqtt_nlb_dns_name)
@@ -112,29 +111,27 @@ Expected end: === SUMMARY: ALL CHECKS PASSED ===
 WHEN: Demo scale-out then scale-in with predefined client counts and durations.
 WHERE: Project root.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\run_staged_load_test.ps1 -FromTerraform
-
+  pwsh -File ./scripts/run_staged_load_test.ps1 -FromTerraform
 Softer load (fewer disconnects):
   $env:PUBLISH_INTERVAL = "0.01"
   $env:PAYLOAD_SIZE = "4096"
   $env:MESSAGES_PER_BURST = "5"
-  powershell -ExecutionPolicy Bypass -File .\scripts\run_staged_load_test.ps1 -FromTerraform
-
+  pwsh -File ./scripts/run_staged_load_test.ps1 -FromTerraform
 ================================================================================
 8) SUSTAINED LOAD TEST (runs until YOU press Ctrl+C)
 ================================================================================
 WHEN: Keep load running to drive autoscaling; watch dashboard Nodes tab.
 WHERE: Project root. Stop with Ctrl+C.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\run_sustained_load_test.ps1 -FromTerraform -Clients 100
+  pwsh -File ./scripts/run_sustained_load_test.ps1 -FromTerraform -Clients 100
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\run_sustained_load_test.ps1 -FromTerraform -Clients 200
+  pwsh -File ./scripts/run_sustained_load_test.ps1 -FromTerraform -Clients 200
 
 Gentler (recommended for stable errors=0):
   $env:PUBLISH_INTERVAL = "0.02"
   $env:PAYLOAD_SIZE = "4096"
   $env:MESSAGES_PER_BURST = "3"
-  powershell -ExecutionPolicy Bypass -File .\scripts\run_sustained_load_test.ps1 -FromTerraform -Clients 100
+  pwsh -File ./scripts/run_sustained_load_test.ps1 -FromTerraform -Clients 100
 
 Git Bash (wrapper):
   FROM_TERRAFORM=true CLIENTS=200 ./scripts/run_sustained_load_test.sh
@@ -198,8 +195,7 @@ WHERE: Git Bash.
 WHEN: Dashboard shows Stopped nodes; manual cluster cleanup; read logs.
 WHERE: Your PC -> core public IP (terraform output emqx_core_public_ip).
 
-  ssh -i C:\path\to\your-key.pem ubuntu@<CORE_PUBLIC_IP>
-
+  ssh -i /path/to/your-key.pem ubuntu@<CORE_PUBLIC_IP>
 On core:
   sudo tail -50 /var/log/emqx-bootstrap.log
   sudo systemctl status emqx
@@ -216,8 +212,7 @@ Replicant: EC2 console -> emqx-prod-replicant -> Public IP -> same ssh command.
 WHEN: mqtt_probe fails on already-running VMs before instance refresh.
 WHERE: Project root.
 
-  powershell -ExecutionPolicy Bypass -File .\scripts\fix_mqtt_anonymous_ssm.ps1
-
+  pwsh -File ./scripts/fix_mqtt_anonymous_ssm.ps1
 ================================================================================
 15) WEB URLS (browser)
 ================================================================================
@@ -233,13 +228,13 @@ WHEN: Demo dashboard and cluster view.
 16) RECOMMENDED ORDER FOR SUBMISSION DEMO
 ================================================================================
   1. terraform apply
-  2. scripts\watch_bootstrap.ps1
-  3. scripts\verify_deployment.ps1
-  4. python scripts\mqtt_probe.py --host <nlb>
+  2. pwsh -File ./scripts/watch_bootstrap.ps1
+  3. pwsh -File ./scripts/verify_deployment.ps1
+  4. python scripts/mqtt_probe.py --host <nlb>   # uses .venv on macOS after first pwsh script run
   5. Open dashboard -> Nodes (see cluster)
-  6. scripts\run_sustained_load_test.ps1 -FromTerraform -Clients 100
+  6. pwsh -File ./scripts/run_sustained_load_test.ps1 -FromTerraform -Clients 100
   7. Watch ASG DesiredCapacity -> 2, dashboard connections on 2+ replicants
-  8. scripts\prove_emqx_cluster.ps1 -DashboardPassword "..."
+  8. pwsh -File ./scripts/prove_emqx_cluster.ps1 -DashboardPassword "..."
   9. Screenshot: Nodes table + ASG Activity + proof PASS
  10. Ctrl+C stop load; wait scale-in to 1
  11. terraform destroy (when finished)
@@ -249,7 +244,7 @@ WHEN: Demo dashboard and cluster view.
 ================================================================================
   - Wrong path: scripts\mqtt_probe.py  (NOT script\)
   - Git Bash: use \ for line break in aws, not PowerShell `
-  - Running prove_emqx_cluster.ps1 in Git Bash without powershell -File
+  - Running prove_emqx_cluster.ps1 in Git Bash without pwsh -File
   - Expecting equal connections on every node (NLB sticks TCP sessions)
   - Expecting core to show MQTT connections (core is not on NLB)
   - Checking DesiredCapacity=1 right after scale-in (normal)

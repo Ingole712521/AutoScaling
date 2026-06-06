@@ -43,10 +43,10 @@ output "access_summary" {
 output "verification_commands" {
   description = "Post-deploy verification (no SSH required)."
   value = {
-    dashboard_port_test = "Test-NetConnection -ComputerName ${aws_eip.core_eip.public_ip} -Port 18083"
-    mqtt_port_test      = "Test-NetConnection -ComputerName ${aws_lb.mqtt_nlb.dns_name} -Port 1883"
-    watch_bootstrap     = "powershell -ExecutionPolicy Bypass -File scripts/watch_bootstrap.ps1"
-    verify_all          = "powershell -ExecutionPolicy Bypass -File scripts/verify_deployment.ps1"
+    dashboard_port_test = "pwsh -Command \"Test-TcpPortOpen -HostName ${aws_eip.core_eip.public_ip} -Port 18083\" (dot-source scripts/lib/PlatformHelpers.ps1 first)"
+    mqtt_port_test      = "pwsh -Command \"Test-TcpPortOpen -HostName ${aws_lb.mqtt_nlb.dns_name} -Port 1883\" (dot-source scripts/lib/PlatformHelpers.ps1 first)"
+    watch_bootstrap     = "pwsh -File scripts/watch_bootstrap.ps1"
+    verify_all          = "pwsh -File scripts/verify_deployment.ps1"
     dashboard_url       = "http://${aws_eip.core_eip.public_ip}:18083"
   }
 }

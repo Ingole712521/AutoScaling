@@ -28,12 +28,8 @@ if [[ -z "${MQTT_HOST}" ]]; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required."
-  exit 1
-fi
-
-python3 -m pip install -q -r loadtest/requirements.txt
+PYTHON="$("${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
+"${PYTHON}" -m pip install -q -r loadtest/requirements.txt
 
 echo "Sustained load: ${CLIENTS} clients against ${MQTT_HOST} (Ctrl+C to stop)"
-exec python3 loadtest/staged_load.py --host "${MQTT_HOST}" --sustained --clients "${CLIENTS}"
+exec "${PYTHON}" loadtest/staged_load.py --host "${MQTT_HOST}" --sustained --clients "${CLIENTS}"

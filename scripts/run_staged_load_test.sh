@@ -29,13 +29,8 @@ if [[ -z "${MQTT_HOST}" ]]; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required."
-  exit 1
-fi
-
-python3 -m pip install -q -r loadtest/requirements.txt
-
+PYTHON="$("${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
+"${PYTHON}" -m pip install -q -r loadtest/requirements.txt
 ARGS=(loadtest/staged_load.py --host "${MQTT_HOST}")
 
 if [[ -n "${PUBLISH_INTERVAL}" ]]; then
@@ -47,4 +42,4 @@ if [[ -n "${PAYLOAD_SIZE}" ]]; then
 fi
 
 echo "Running staged load test against ${MQTT_HOST}"
-python3 "${ARGS[@]}"
+"${PYTHON}" "${ARGS[@]}"

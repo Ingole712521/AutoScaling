@@ -11,6 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+. (Join-Path (Join-Path $PSScriptRoot "lib") "PlatformHelpers.ps1")
 
 $coreIp = terraform output -raw emqx_core_public_ip
 $mqttHost = terraform output -raw mqtt_nlb_dns_name
@@ -40,7 +41,7 @@ if ([string]::IsNullOrWhiteSpace($DashboardPassword)) {
     exit 1
 }
 
-python -m pip install -q -r loadtest/requirements.txt
+Install-PythonRequirements -ProjectRoot $Root | Out-Null
 
 $env:EMQX_CORE_IP = $coreIp
 $env:MQTT_HOST = $mqttHost
@@ -63,5 +64,5 @@ $argsList = @(
 )
 if ($SkipLoad) { $argsList += "--skip-load" }
 
-python @argsList
+Invoke-ProjectPython -ProjectRoot $Root @argsList
 exit $LASTEXITCODE

@@ -12,6 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+. (Join-Path (Join-Path $PSScriptRoot "lib") "PlatformHelpers.ps1")
 
 $AsgName = $env:ASG_NAME
 if ($FromTerraform) {
@@ -42,7 +43,7 @@ if ([string]::IsNullOrWhiteSpace($MqttHost)) {
     exit 1
 }
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+if (-not (Get-PythonExecutable)) {
     throw "Python 3 is required."
 }
 
@@ -54,10 +55,10 @@ if ([string]::IsNullOrWhiteSpace($LoadStages)) {
 }
 
 Write-Host "Installing dependencies..."
-python -m pip install -q -r loadtest/requirements.txt
+Install-PythonRequirements -ProjectRoot $Root | Out-Null
 
 Write-Host "MQTT preflight..."
-python scripts/mqtt_probe.py --host $MqttHost
+Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $MqttHost
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Preflight failed. Run: .\scripts\fix_mqtt_anonymous_ssm.ps1 then .\scripts\prove_emqx_cluster.ps1" -ForegroundColor Yellow
     exit 1
@@ -76,6 +77,6 @@ $pyArgs = @(
 if (-not [string]::IsNullOrWhiteSpace($AsgName)) {
     $pyArgs += @("--asg-name", $AsgName)
 }
-python @pyArgs
+Invoke-ProjectPython -ProjectRoot $Root @pyArgs
 
 exit $LASTEXITCODE

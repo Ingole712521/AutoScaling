@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+. (Join-Path (Join-Path $PSScriptRoot "lib") "PlatformHelpers.ps1")
 
 $coreIp = terraform output -raw emqx_core_public_ip
 $mqttHost = terraform output -raw mqtt_nlb_dns_name
@@ -17,15 +18,15 @@ Write-Host "Dashboard: $dashboardUrl"
 Write-Host "MQTT NLB:  tcp://${mqttHost}:1883"
 Write-Host ""
 
-$dashboard = Test-NetConnection -ComputerName $coreIp -Port 18083 -WarningAction SilentlyContinue
-$mqtt = Test-NetConnection -ComputerName $mqttHost -Port 1883 -WarningAction SilentlyContinue
+$dashboardOpen = Test-TcpPortOpen -HostName $coreIp -Port 18083
+$mqttOpen = Test-TcpPortOpen -HostName $mqttHost -Port 1883
 
-Write-Host ("Dashboard 18083: {0}" -f $(if ($dashboard.TcpTestSucceeded) { "PASS" } else { "FAIL" }))
-Write-Host ("MQTT NLB 1883:   {0}" -f $(if ($mqtt.TcpTestSucceeded) { "PASS" } else { "FAIL" }))
+Write-Host ("Dashboard 18083: {0}" -f $(if ($dashboardOpen) { "PASS" } else { "FAIL" }))
+Write-Host ("MQTT NLB 1883:   {0}" -f $(if ($mqttOpen) { "PASS" } else { "FAIL" }))
 
-if ($mqtt.TcpTestSucceeded -and (Get-Command python -ErrorAction SilentlyContinue)) {
-    python -m pip install -q -r loadtest/requirements.txt 2>$null
-    python scripts/mqtt_probe.py --host $mqttHost
+if ($mqttOpen -and (Get-PythonExecutable)) {
+    Install-PythonRequirements -ProjectRoot $Root | Out-Null
+    Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $mqttHost
 }
 
 if (Get-Command aws -ErrorAction SilentlyContinue) {
@@ -54,5 +55,5 @@ if (Get-Command aws -ErrorAction SilentlyContinue) {
 Write-Host ""
 Write-Host "Full proof: .\scripts\prove_emqx_cluster.ps1" -ForegroundColor Cyan
 
-if ($dashboard.TcpTestSucceeded -and $mqtt.TcpTestSucceeded) { exit 0 }
+if ($dashboardOpen -and $mqttOpen) { exit 0 }
 exit 1

@@ -186,7 +186,7 @@ function Install-PythonRequirements {
     )
 
     $python = Initialize-ProjectPython -ProjectRoot $ProjectRoot
-    $reqPath = Join-MultiplePath @($ProjectRoot, ($RequirementsFile -split '/'))
+    $reqPath = Join-MultiplePath (@($ProjectRoot) + ($RequirementsFile -split '/'))
     & $python -m pip install -q -r $reqPath
     if ($LASTEXITCODE -ne 0 -and -not $?) {
         throw "pip install failed for $RequirementsFile"
@@ -203,14 +203,11 @@ function Invoke-ProjectPython {
     )
 
     $python = Initialize-ProjectPython -ProjectRoot $ProjectRoot
-    & $python @PythonArgs
-    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        return $LASTEXITCODE
-    }
-    if (-not $?) {
-        return 1
-    }
-    return 0
+    & $python @PythonArgs | ForEach-Object { Write-Host $_ }
+    $exitCode = $LASTEXITCODE
+    if ($null -eq $exitCode) { $exitCode = 0 }
+    if (-not $?) { $exitCode = 1 }
+    return ,$exitCode
 }
 
 function ConvertTo-AwsFileUri {

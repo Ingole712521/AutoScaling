@@ -31,7 +31,8 @@ if [[ -z "${_base_python}" ]] || ! "${_base_python}" -c "import sys; assert sys.
   echo "Python 3 is required." >&2
   echo "  macOS:   brew install python" >&2
   echo "  Windows: winget install Python.Python.3" >&2
-  echo "  Linux:   sudo apt install python3 python3-venv" >&2
+  echo "  Linux:   sudo apt install python3 python3-venv   # Ubuntu/Debian" >&2
+  echo "           sudo dnf install python3 python3-pip    # Amazon Linux 2023" >&2
   exit 1
 fi
 

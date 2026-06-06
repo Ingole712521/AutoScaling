@@ -121,6 +121,34 @@ Softer staged load (PowerShell):
   $env:MESSAGES_PER_BURST = "5"
   pwsh -File ./scripts/run_staged_load_test.ps1 -FromTerraform
 
+--- LOAD TEST FROM AMAZON LINUX EC2 (recommended — same VPC as EMQX) ---
+WHEN  : Run load from EC2 instead of your laptop (more connections, stable network)
+WHERE : Your PC once (print env) + Amazon Linux EC2 in ap-south-1 (same VPC or reachable NLB)
+
+On your PC (project root) — copy/paste output to EC2:
+  bash ./scripts/print_load_test_env.sh
+
+On Amazon Linux EC2 (after git clone this repo, or scp/rsync project folder):
+  cd emqx
+  bash ./scripts/setup_loadgen_amazon_linux.sh          # once: python3, venv, pip deps
+  bash ./scripts/run_load_test_on_ec2.sh probe          # quick MQTT check
+  bash ./scripts/run_load_test_on_ec2.sh staged        # ~15 min autoscaling demo
+  CLIENTS=100 bash ./scripts/run_load_test_on_ec2.sh sustained   # until Ctrl+C
+
+Manual env (if print_load_test_env.sh unavailable):
+  export AWS_REGION=ap-south-1
+  export MQTT_HOST=$(terraform output -raw mqtt_nlb_dns_name)   # run on PC, paste on EC2
+  export ASG_NAME=$(terraform output -raw replicant_asg_name)
+
+EC2 requirements:
+  - Amazon Linux 2 or 2023 (or Ubuntu) in same region
+  - Security group: outbound to NLB :1883 allowed (default usually OK)
+  - IAM role with autoscaling:DescribeAutoScalingGroups optional (ASG polling in staged_load.py)
+
+Launch a small load-generator (AWS Console):
+  EC2 -> Launch instance -> Amazon Linux 2023 -> t3.small -> same VPC/subnet as EMQX
+  -> SSH in -> sudo dnf install -y git -> git clone <your-repo> -> follow steps above
+
 --- prove_emqx_cluster (SUBMISSION PROOF — RUN LAST) ---
 WHEN  : After bootstrap OK + ASG scaled to 2+ (run load test first)
 WHERE : Project root

@@ -594,7 +594,7 @@ aws autoscaling start-instance-refresh \
 | `terraform/` | Optional modular stack (3 cores, private subnets) |
 | `docs/COMMANDS-REFERENCE.txt` | Full command cheat sheet |
 | `docs/architecture.md` | Architecture diagram (Mermaid) |
-| `frontend/nextjs-dashboard/` | Optional dashboard UI (separate app) |
+| `loadtest/mqtt_common.py` | Shared MQTT helpers (`connack_ok`) |
 
 ---
 

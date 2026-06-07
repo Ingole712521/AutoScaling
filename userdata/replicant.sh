@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # EMQX 5.8.x replicant — joins core cluster via Route53 seeds, serves NLB MQTT traffic.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive

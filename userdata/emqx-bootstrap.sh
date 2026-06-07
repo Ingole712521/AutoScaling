@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # EMQX 5.8.x bootstrap for AWS EC2 (core or replicant).
 # DEB layout: /etc/emqx/emqx.conf, overrides via /etc/emqx/terraform.env
 set -euo pipefail

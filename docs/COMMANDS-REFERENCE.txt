@@ -133,7 +133,7 @@ On Amazon Linux EC2 (after git clone this repo, or scp/rsync project folder):
   bash ./scripts/setup_loadgen_amazon_linux.sh          # once: python3, venv, pip deps
   bash ./scripts/run_load_test_on_ec2.sh probe          # quick MQTT check
   bash ./scripts/run_load_test_on_ec2.sh staged        # ~15 min autoscaling demo
-  bash ./scripts/run_load_test_on_ec2.sh 2k            # 2000 MQTT clients sustained
+  bash ./scripts/run_load_test_on_ec2.sh 2k            # orchestrated 2K dashboard demo (~30 min)
   CLIENTS=100 bash ./scripts/run_load_test_on_ec2.sh sustained   # until Ctrl+C
 
 Manual env (if print_load_test_env.sh unavailable):
@@ -246,9 +246,11 @@ WHEN  : After bootstrap; for submission point 2
 WHERE : SSH on EC2 core (section F)
 
   sudo grep PERF /var/log/emqx-bootstrap.log | tail -20
-  sysctl fs.file-max net.core.somaxconn
-  systemctl show emqx -p LimitNOFILE
-  grep -E 'MAX_PORTS|MAX_CONNECTIONS|ACCEPTORS|DIST_BUFFER' /etc/emqx/terraform.env
+  sysctl fs.file-max net.core.somaxconn net.ipv4.tcp_max_syn_backlog
+  systemctl show emqx -p LimitNOFILE -p LimitNPROC
+  grep -E 'MAX_PORTS|MAX_CONNECTIONS|ACCEPTORS|DIST_BUFFER|MQTT__MAX' /etc/emqx/terraform.env
+  cat /etc/sysctl.d/99-emqx-performance.conf | head -15
+  cat /etc/security/limits.d/99-emqx.conf
   swapon --show
 
 Expected: PERF lines OK, fs.file-max=2097152, swap empty, LimitNOFILE=2097152

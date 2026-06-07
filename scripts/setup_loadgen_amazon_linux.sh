@@ -45,7 +45,7 @@ cd "${ROOT}"
 
 if [[ ! -f "${ROOT}/loadtest/requirements.txt" ]]; then
   echo "Run from project root (folder with loadtest/requirements.txt)." >&2
-  echo "Example: cd ~/EMQX_autoScaling && bash ./scripts/setup_loadgen_amazon_linux.sh" >&2
+  echo "Example: cd /path/to/emqx && bash ./scripts/setup_loadgen_amazon_linux.sh" >&2
   exit 1
 fi
 
@@ -66,5 +66,6 @@ echo "  export AWS_REGION=ap-south-1"
 echo ""
 echo "  bash ./scripts/run_load_test_on_ec2.sh probe"
 echo "  bash ./scripts/run_load_test_on_ec2.sh staged"
-echo "  bash ./scripts/run_load_test_on_ec2.sh 2k"
+echo "  bash ./scripts/run_2k_load_test.sh                         # full 2K dashboard demo"
+echo "  bash ./scripts/run_load_test_on_ec2.sh 2k                # same (alias)"
 echo "  CLIENTS=100 bash ./scripts/run_load_test_on_ec2.sh sustained"

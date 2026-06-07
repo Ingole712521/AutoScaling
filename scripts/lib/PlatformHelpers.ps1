@@ -115,31 +115,6 @@ function Get-PwshExecutable {
     return $null
 }
 
-function Invoke-PwshFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$ScriptPath,
-        [Parameter(ValueFromRemainingArguments = $true)][object[]]$ScriptArgs
-    )
-
-    $shell = Get-PwshExecutable
-    if (-not $shell) {
-        throw "PowerShell is required. Install PowerShell Core: https://aka.ms/powershell"
-    }
-
-    $isLegacyWindows = $shell -match "WindowsPowerShell[/\\]v1\.0[/\\]powershell\.exe$"
-    $shellArgs = @("-NoProfile", "-File", $ScriptPath) + $ScriptArgs
-    if ($isLegacyWindows) {
-        $shellArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ScriptPath) + $ScriptArgs
-    }
-
-    & $shell @shellArgs
-    return $LASTEXITCODE
-}
-
-function Test-UseProjectVenv {
-    return $true
-}
-
 function Get-ProjectVenvPython {
     param([string]$ProjectRoot)
 

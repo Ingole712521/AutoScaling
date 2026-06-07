@@ -12,6 +12,10 @@ CLIENTS="${CLIENTS:-100}"
 PUBLISH_INTERVAL="${PUBLISH_INTERVAL:-0.01}"
 PAYLOAD_SIZE="${PAYLOAD_SIZE:-8192}"
 MESSAGES_PER_BURST="${MESSAGES_PER_BURST:-5}"
+CONNECT_STAGGER_SEC="${CONNECT_STAGGER_SEC:-0.05}"
+MQTT_CONNECT_TIMEOUT="${MQTT_CONNECT_TIMEOUT:-20}"
+CONN_ONLY="${CONN_ONLY:-false}"
+LOAD_DURATION_SEC="${LOAD_DURATION_SEC:-0}"
 ASG_NAME="${ASG_NAME:-}"
 
 if [[ "${FROM_TERRAFORM}" == "true" ]]; then
@@ -43,7 +47,16 @@ ARGS=(
   --publish-interval "${PUBLISH_INTERVAL}"
   --payload-size "${PAYLOAD_SIZE}"
   --messages-per-burst "${MESSAGES_PER_BURST}"
+  --connect-timeout "${MQTT_CONNECT_TIMEOUT}"
+  --connect-stagger "${CONNECT_STAGGER_SEC}"
 )
+
+if [[ "${CONN_ONLY}" == "true" || "${CONN_ONLY}" == "1" ]]; then
+  ARGS+=(--conn-only)
+fi
+if [[ "${LOAD_DURATION_SEC}" -gt 0 ]]; then
+  ARGS+=(--duration "${LOAD_DURATION_SEC}")
+fi
 
 if [[ -n "${ASG_NAME}" ]]; then
   ARGS+=(--asg-name "${ASG_NAME}")

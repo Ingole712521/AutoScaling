@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # EMQX 5.x core bootstrap — overrides via terraform.env (preserves package emqx.conf).
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive

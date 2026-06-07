@@ -97,11 +97,7 @@ case "${MODE}" in
   2k)
     emqx_raise_nofile
     export MQTT_HOST ASG_NAME
-    export CLIENTS=2000
-    export PUBLISH_INTERVAL="${PUBLISH_INTERVAL:-0.02}"
-    export PAYLOAD_SIZE="${PAYLOAD_SIZE:-4096}"
-    export MESSAGES_PER_BURST="${MESSAGES_PER_BURST:-3}"
-    echo "2k mode: ${CLIENTS} sustained MQTT clients (Ctrl+C to stop after ASG scales)"
-    exec bash "${ROOT}/scripts/run_sustained_load_test.sh"
+    echo "2k orchestrated demo: warmup ASG -> 2000 conn-only hold for dashboard (~25-35 min total)"
+    exec bash "${ROOT}/scripts/run_2k_load_test.sh"
     ;;
 esac

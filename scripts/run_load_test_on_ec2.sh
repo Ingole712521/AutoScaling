@@ -14,9 +14,13 @@ AWS_REGION="${AWS_REGION:-ap-south-1}"
 CLIENTS="${CLIENTS:-100}"
 export AWS_REGION AWS_DEFAULT_REGION="${AWS_REGION}"
 
+emqx_raise_nofile() {
+  ulimit -n 65535 2>/dev/null || ulimit -n 8192 2>/dev/null || true
+}
+
 usage() {
   cat <<'EOF'
-Usage: ./scripts/run_load_test_on_ec2.sh [probe|staged|sustained]
+Usage: ./scripts/run_load_test_on_ec2.sh [probe|staged|sustained|2k]
 
 Run from Amazon Linux / Ubuntu EC2 in the same VPC as EMQX.
 Set these once (copy from your PC: bash ./scripts/print_load_test_env.sh):
@@ -29,10 +33,11 @@ Examples:
   bash ./scripts/run_load_test_on_ec2.sh probe
   bash ./scripts/run_load_test_on_ec2.sh staged
   CLIENTS=200 bash ./scripts/run_load_test_on_ec2.sh sustained
+  bash ./scripts/run_load_test_on_ec2.sh 2k          # 2000 clients (autoscaling demo)
 
-Optional tuning (staged/sustained):
-  PUBLISH_INTERVAL=0.001 PAYLOAD_SIZE=16384 MESSAGES_PER_BURST=10
-  LOAD_STAGES=40:180:baseline-heavy,80:300:scale-out-2,120:300:scale-out-3,10:90:scale-in
+Optional tuning (staged/sustained/2k):
+  PUBLISH_INTERVAL=0.02 PAYLOAD_SIZE=4096 MESSAGES_PER_BURST=3
+  LOAD_STAGES=2000:600:demo-2k                       # staged: 2k for 10 min
 
 First time on EC2: bash ./scripts/setup_loadgen_amazon_linux.sh
 EOF
@@ -40,7 +45,7 @@ EOF
 
 case "${MODE}" in
   -h|--help|help) usage; exit 0 ;;
-  probe|staged|sustained) ;;
+  probe|staged|sustained|2k) ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
     usage
@@ -55,7 +60,7 @@ if [[ -z "${MQTT_HOST}" ]]; then
   exit 1
 fi
 
-PYTHON="$("${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
+PYTHON="$(bash "${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
 "${PYTHON}" -m pip install -q -r loadtest/requirements.txt
 
 echo "=== EMQX load test from EC2 ==="
@@ -82,10 +87,21 @@ case "${MODE}" in
     exec bash "${ROOT}/scripts/run_staged_load_test.sh"
     ;;
   sustained)
+    emqx_raise_nofile
     export MQTT_HOST ASG_NAME CLIENTS
     export PUBLISH_INTERVAL="${PUBLISH_INTERVAL:-0.01}"
     export PAYLOAD_SIZE="${PAYLOAD_SIZE:-8192}"
     export MESSAGES_PER_BURST="${MESSAGES_PER_BURST:-5}"
+    exec bash "${ROOT}/scripts/run_sustained_load_test.sh"
+    ;;
+  2k)
+    emqx_raise_nofile
+    export MQTT_HOST ASG_NAME
+    export CLIENTS=2000
+    export PUBLISH_INTERVAL="${PUBLISH_INTERVAL:-0.02}"
+    export PAYLOAD_SIZE="${PAYLOAD_SIZE:-4096}"
+    export MESSAGES_PER_BURST="${MESSAGES_PER_BURST:-3}"
+    echo "2k mode: ${CLIENTS} sustained MQTT clients (Ctrl+C to stop after ASG scales)"
     exec bash "${ROOT}/scripts/run_sustained_load_test.sh"
     ;;
 esac

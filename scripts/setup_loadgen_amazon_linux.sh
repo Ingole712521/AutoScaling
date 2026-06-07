@@ -44,11 +44,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
 if [[ ! -f "${ROOT}/loadtest/requirements.txt" ]]; then
-  echo "Run this from the emqx project root (loadtest/requirements.txt missing)." >&2
+  echo "Run from project root (folder with loadtest/requirements.txt)." >&2
+  echo "Example: cd ~/EMQX_autoScaling && bash ./scripts/setup_loadgen_amazon_linux.sh" >&2
   exit 1
 fi
 
-PYTHON="$("${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
+# Git clone on Windows often drops +x on lib/*.sh
+chmod +x "${ROOT}/scripts/lib/"*.sh "${ROOT}/scripts/"*.sh 2>/dev/null || true
+
+PYTHON="$(bash "${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
 "${PYTHON}" -m pip install -q --upgrade pip
 "${PYTHON}" -m pip install -q -r loadtest/requirements.txt
 
@@ -62,4 +66,5 @@ echo "  export AWS_REGION=ap-south-1"
 echo ""
 echo "  bash ./scripts/run_load_test_on_ec2.sh probe"
 echo "  bash ./scripts/run_load_test_on_ec2.sh staged"
+echo "  bash ./scripts/run_load_test_on_ec2.sh 2k"
 echo "  CLIENTS=100 bash ./scripts/run_load_test_on_ec2.sh sustained"

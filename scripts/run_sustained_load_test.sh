@@ -29,7 +29,7 @@ if [[ -z "${MQTT_HOST}" ]]; then
   exit 1
 fi
 
-PYTHON="$("${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
+PYTHON="$(bash "${ROOT}/scripts/lib/ensure_venv.sh" "${ROOT}")"
 "${PYTHON}" -m pip install -q -r loadtest/requirements.txt
 
 echo "MQTT preflight..."

@@ -133,6 +133,7 @@ On Amazon Linux EC2 (after git clone this repo, or scp/rsync project folder):
   bash ./scripts/setup_loadgen_amazon_linux.sh          # once: python3, venv, pip deps
   bash ./scripts/run_load_test_on_ec2.sh probe          # quick MQTT check
   bash ./scripts/run_load_test_on_ec2.sh staged        # ~15 min autoscaling demo
+  bash ./scripts/run_load_test_on_ec2.sh 2k            # 2000 MQTT clients sustained
   CLIENTS=100 bash ./scripts/run_load_test_on_ec2.sh sustained   # until Ctrl+C
 
 Manual env (if print_load_test_env.sh unavailable):

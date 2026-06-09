@@ -124,14 +124,14 @@ variable "emqx_mqtt_username" {
 }
 
 variable "emqx_mqtt_password" {
-  description = "MQTT password for built-in database authentication."
+  description = "MQTT password for built-in database authentication. Written to Secrets Manager on first apply when use_secrets_manager=true."
   type        = string
   sensitive   = true
-  default     = ""
+  default     = "ChangeMe!MqttPassword"
 
   validation {
-    condition     = var.emqx_mqtt_enable_authn ? length(var.emqx_mqtt_password) > 0 : true
-    error_message = "emqx_mqtt_password is required when emqx_mqtt_enable_authn is true (initial Secrets Manager value or user_data)."
+    condition     = var.emqx_mqtt_enable_authn ? length(trimspace(var.emqx_mqtt_password)) > 0 : true
+    error_message = "emqx_mqtt_password must be non-empty when emqx_mqtt_enable_authn is true. Set it in terraform.tfvars (see terraform.tfvars.example)."
   }
 }
 

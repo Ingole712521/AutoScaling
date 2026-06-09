@@ -135,7 +135,7 @@ resource "aws_instance" "grafana" {
   key_name               = var.key_name
   iam_instance_profile   = aws_iam_instance_profile.grafana_ec2[0].name
 
-  user_data = base64encode(templatefile("${path.module}/userdata/grafana-bootstrap.sh", merge(local.grafana_bootstrap, {
+  user_data = base64gzip(templatefile("${path.module}/userdata/grafana-bootstrap.sh", merge(local.grafana_bootstrap, {
     dashboard_json = templatefile("${path.module}/userdata/emqx-grafana-dashboard.json.tftpl", {
       region             = var.aws_region
       core_asg_name      = aws_autoscaling_group.emqx_core_asg.name

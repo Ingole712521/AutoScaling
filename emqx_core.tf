@@ -66,7 +66,7 @@ resource "aws_launch_template" "emqx_core_lt" {
 
   update_default_version = true
 
-  user_data = base64encode(templatefile("${path.module}/userdata/emqx-bootstrap.sh", merge(local.emqx_bootstrap_base, {
+  user_data = base64gzip(templatefile("${path.module}/userdata/emqx-bootstrap.sh", merge(local.emqx_bootstrap_base, {
     node_role        = "core"
     core_instance_id = "asg"
   })))

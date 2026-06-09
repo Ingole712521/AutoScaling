@@ -4,11 +4,22 @@ resource "aws_security_group" "nlb_sg" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "MQTT from internet"
+    description = "MQTT plaintext from internet"
     from_port   = 1883
     to_port     = 1883
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  dynamic "ingress" {
+    for_each = var.enable_mqtt_tls ? [1] : []
+    content {
+      description = "MQTT over TLS from internet (ACM termination at NLB)"
+      from_port   = 8883
+      to_port     = 8883
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
   }
 
   egress {

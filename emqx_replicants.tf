@@ -45,6 +45,21 @@ resource "aws_lb_listener" "mqtt_1883" {
   }
 }
 
+resource "aws_lb_listener" "mqtt_8883_tls" {
+  count = var.enable_mqtt_tls ? 1 : 0
+
+  load_balancer_arn = aws_lb.mqtt_nlb.arn
+  port              = 8883
+  protocol          = "TLS"
+  ssl_policy        = var.mqtt_tls_ssl_policy
+  certificate_arn   = var.acm_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.mqtt_tg.arn
+  }
+}
+
 resource "aws_launch_template" "emqx_replicant_lt" {
   name_prefix   = "${var.project_name}-replicant-"
   image_id      = data.aws_ami.ubuntu_2204.id
@@ -65,7 +80,7 @@ resource "aws_launch_template" "emqx_replicant_lt" {
 
   user_data = base64encode(templatefile("${path.module}/userdata/emqx-bootstrap.sh", merge(local.emqx_bootstrap_base, {
     node_role        = "replicant"
-    core_instance_id = aws_instance.emqx_core.id
+    core_instance_id = "asg"
   })))
 
   tag_specifications {
@@ -84,7 +99,7 @@ resource "aws_autoscaling_group" "emqx_replicants_asg" {
   max_size                  = var.replicant_max_size
   desired_capacity          = var.replicant_desired_capacity
   health_check_type         = "ELB"
-  health_check_grace_period = 600
+  health_check_grace_period = var.asg_health_check_grace_period
 
   launch_template {
     id      = aws_launch_template.emqx_replicant_lt.id
@@ -109,7 +124,7 @@ resource "aws_autoscaling_group" "emqx_replicants_asg" {
   }
 
   depends_on = [
-    aws_instance.emqx_core,
+    aws_autoscaling_group.emqx_core_asg,
     aws_ssm_parameter.core_private_ip,
     aws_ssm_parameter.cluster_seeds,
   ]
@@ -124,7 +139,7 @@ resource "aws_autoscaling_group" "emqx_replicants_asg" {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 50
-      instance_warmup        = 600
+      instance_warmup        = var.asg_instance_warmup_sec
     }
   }
 }

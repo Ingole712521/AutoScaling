@@ -96,6 +96,58 @@ resource "aws_cloudwatch_metric_alarm" "replicants_high_cpu" {
   }
 }
 
+resource "aws_autoscaling_policy" "core_scale_out_cpu" {
+  name                   = "${var.project_name}-core-scale-out-cpu"
+  autoscaling_group_name = aws_autoscaling_group.emqx_core_asg.name
+  adjustment_type        = "ChangeInCapacity"
+  scaling_adjustment     = 1
+  cooldown               = var.autoscaling_cooldown_sec
+}
+
+resource "aws_autoscaling_policy" "core_scale_in_cpu" {
+  name                   = "${var.project_name}-core-scale-in-cpu"
+  autoscaling_group_name = aws_autoscaling_group.emqx_core_asg.name
+  adjustment_type        = "ChangeInCapacity"
+  scaling_adjustment     = -1
+  cooldown               = var.scale_in_cooldown_sec
+}
+
+resource "aws_cloudwatch_metric_alarm" "core_high_cpu" {
+  alarm_name          = "${var.project_name}-core-high-cpu"
+  alarm_description   = "Scale out (+1) core ASG when average CPU exceeds threshold"
+  namespace           = "AWS/EC2"
+  metric_name         = "CPUUtilization"
+  statistic           = "Average"
+  period              = 60
+  evaluation_periods  = 2
+  threshold           = var.core_scale_out_cpu_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_autoscaling_policy.core_scale_out_cpu.arn]
+
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.emqx_core_asg.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "core_low_cpu" {
+  alarm_name          = "${var.project_name}-core-low-cpu"
+  alarm_description   = "Scale in (-1) core ASG when average CPU stays below threshold"
+  namespace           = "AWS/EC2"
+  metric_name         = "CPUUtilization"
+  statistic           = "Average"
+  period              = var.scale_in_metric_period_sec
+  evaluation_periods  = var.scale_in_evaluation_periods
+  threshold           = var.core_scale_in_cpu_threshold
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_autoscaling_policy.core_scale_in_cpu.arn]
+
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.emqx_core_asg.name
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "replicants_low_cpu" {
   alarm_name          = "${var.project_name}-replicants-low-cpu"
   alarm_description   = "Scale in (-1) when ASG average CPU stays below threshold"

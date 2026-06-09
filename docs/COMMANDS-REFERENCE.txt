@@ -9,8 +9,9 @@ PowerShell   : pwsh -File ./scripts/<name>.ps1
 Bash         : bash ./scripts/<name>.sh   (Git Bash, macOS, Linux, WSL)
 Python       : auto .venv/ on first script run (all OS)
 
-Dashboard    : http://<CORE_IP>:18083  (admin + password from terraform.tfvars)
+Dashboard    : http://<CORE_IP>:18083  (admin + password from Secrets Manager or terraform.tfvars)
 MQTT clients : tcp://<NLB_DNS>:1883     (NOT dashboard port)
+Secrets      : use_secrets_manager=true (default) — see docs/secrets-manager.md
 
 ================================================================================
 A) COMPLETE DEMO — RUN IN THIS ORDER (WHEN + WHERE + COMMAND)
@@ -174,7 +175,7 @@ Git Bash — Python direct:
 Expected last line: === SUMMARY: ALL CHECKS PASSED ===
 
 --- fix_mqtt_anonymous_ssm ---
-WHEN  : mqtt_probe fails on old instances (before instance refresh)
+WHEN  : Enable MQTT username/password auth on running nodes (no terraform apply)
 WHERE : Project root
   pwsh -File ./scripts/fix_mqtt_anonymous_ssm.ps1
   bash ./scripts/fix_mqtt_anonymous_ssm.sh
@@ -280,7 +281,113 @@ H) SCREENSHOT CHECKLIST (MINIMUM 8 FOR SUBMISSION)
   9. PERF bootstrap log (optional)                        (SSH on core)
 
 ================================================================================
-I) TEAR DOWN
+I) SECURITY VALIDATION — GROUPS, PORTS, TLS/ACM
+================================================================================
+WHEN  : After verify_deployment PASS (and after enabling TLS, if used)
+WHERE : Project root
+DOCS  : docs/security-validation.md
+
+Full validation:
+  pwsh -File ./scripts/validate_security.ps1
+  bash ./scripts/validate_security.sh
+
+With dashboard password (also checks login):
+  pwsh -File ./scripts/validate_security.ps1 -DashboardPassword "YOUR_PASSWORD"
+
+With TLS hostname verification (custom domain + ACM):
+  pwsh -File ./scripts/validate_security.ps1 -TlsHostname mqtt.example.com
+
+Screenshot: terminal shows === SECURITY SUMMARY: ALL CHECKS PASSED ===
+
+Validated:
+  - Security groups (NLB SG + EMQX nodes SG)
+  - Allowed ports: 1883 (MQTT), 8883 (MQTT TLS if enabled), 18083 (dashboard on core)
+  - Dashboard NOT on NLB; MQTT on EC2 only from NLB security group
+  - MQTT over TLS handshake + ACM certificate status (when enable_mqtt_tls=true)
+
+Enable MQTT TLS (terraform.tfvars):
+  enable_mqtt_tls     = true
+  acm_certificate_arn = "arn:aws:acm:REGION:ACCOUNT:certificate/CERT-ID"
+  terraform apply
+
+TLS client endpoint:
+  terraform output -raw mqtt_tls_broker_url
+
+================================================================================
+J) AUTHENTICATION VALIDATION — USERNAME / PASSWORD + 2K LOAD
+================================================================================
+WHEN  : After verify_deployment PASS; ASG >= 2 recommended for 2K test
+WHERE : Project root
+DOCS  : docs/authentication-validation.md
+
+Full validation (checks + 2,000 authenticated clients):
+  pwsh -File ./scripts/validate_authentication.ps1
+  bash ./scripts/validate_authentication.sh
+
+Checks only (no load):
+  pwsh -File ./scripts/validate_authentication.ps1 -SkipLoad
+
+Enable auth on already-running nodes (no terraform apply):
+  pwsh -File ./scripts/fix_mqtt_anonymous_ssm.ps1
+
+Screenshot: === AUTHENTICATION SUMMARY: ALL CHECKS PASSED ===
+           + AUTHENTICATION LOAD TEST METRICS table
+
+Example metrics target:
+  Authentication Method              Username / Password
+  Concurrent Authenticated Clients   2,000
+  Authentication Failures            0
+  Success Rate                       100%
+  Authentication Latency             measured (p50/p95/avg ms)
+
+terraform.tfvars:
+  emqx_mqtt_enable_authn  = true
+  emqx_mqtt_username      = "mqtt_user"
+  emqx_mqtt_password      = "ChangeMe!MqttPassword"
+
+--- run_validation_suite (ALL IN ONE) ---
+WHEN  : Full proof — security + auth + scale-out + optional 2K load
+WHERE : Project root
+  pwsh -File ./scripts/run_validation_suite.ps1
+  bash ./scripts/run_validation_suite.sh
+  pwsh -File ./scripts/run_validation_suite.ps1 -Skip2K   # faster
+
+Screenshot: === FULL VALIDATION SUITE: ALL STEPS PASSED ===
+
+--- validate_auth_scale_out ---
+WHEN  : After auth validation; best when ASG desired_capacity=1
+WHERE : Project root
+  pwsh -File ./scripts/validate_auth_scale_out.ps1
+  bash ./scripts/validate_auth_scale_out.sh
+
+Proves auth during scale-out:
+  - Authenticated clients held during autoscaling
+  - No new authentication failures on existing sessions
+  - Fresh auth connects succeed on scaled nodes
+  - Cluster remains stable (API node count)
+
+Screenshot: === AUTH SCALE-OUT SUMMARY: ALL CHECKS PASSED ===
+
+================================================================================
+K) AWS SECRETS MANAGER (credentials)
+================================================================================
+WHEN  : Default on new stacks (use_secrets_manager=true in terraform.tfvars)
+WHERE : Project root
+
+  terraform output -raw secrets_manager_secret_name
+  terraform output -raw use_secrets_manager
+
+Rotate passwords (edit terraform.tfvars, then sync — does not re-embed in user_data):
+  pwsh -File ./scripts/sync_emqx_secrets.ps1
+  bash ./scripts/sync_emqx_secrets.sh
+
+Scripts auto-read credentials from Secrets Manager (AWS CLI GetSecretValue).
+Workstation IAM needs secretsmanager:GetSecretValue on the secret.
+
+Full doc: docs/secrets-manager.md
+
+================================================================================
+L) TEAR DOWN
 ================================================================================
 WHEN  : After all screenshots / demo finished
 WHERE : Project root
@@ -288,7 +395,7 @@ WHERE : Project root
   terraform destroy
 
 ================================================================================
-J) COMMON MISTAKES
+M) COMMON MISTAKES
 ================================================================================
   - Running prove BEFORE load test / before ASG scales to 2
   - Wrong folder: must be project root (where terraform.tfvars is)

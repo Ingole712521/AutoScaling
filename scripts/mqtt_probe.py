@@ -18,6 +18,8 @@ def main() -> int:
     parser.add_argument("--host", default=os.environ.get("MQTT_HOST", ""))
     parser.add_argument("--port", type=int, default=int(os.environ.get("MQTT_PORT", "1883")))
     parser.add_argument("--topic", default=os.environ.get("MQTT_TOPIC", "loadtest/probe"))
+    parser.add_argument("--username", default=os.environ.get("MQTT_USERNAME", ""))
+    parser.add_argument("--password", default=os.environ.get("MQTT_PASSWORD", ""))
     args = parser.parse_args()
 
     if not args.host:
@@ -25,7 +27,9 @@ def main() -> int:
         return 1
 
     print(f"Connecting to {args.host}:{args.port} ...")
-    return 0 if probe_broker(args.host, args.port, args.topic, 15.0) else 1
+    user = args.username or None
+    pwd = args.password or None
+    return 0 if probe_broker(args.host, args.port, args.topic, 15.0, user, pwd) else 1
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 # Cross-platform helpers for PowerShell (Windows PowerShell 5.1, PowerShell Core 7+, macOS, Linux, WSL).
 
+. (Join-Path $PSScriptRoot "SecretsHelpers.ps1")
+
 function Test-IsWindowsPlatform {
     if ($null -ne $IsWindows) {
         return [bool]$IsWindows

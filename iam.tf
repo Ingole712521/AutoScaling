@@ -51,6 +51,22 @@ resource "aws_iam_role_policy" "emqx_ec2_ssm_cluster" {
           aws_ssm_parameter.cluster_seeds.arn,
         ]
       },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:AssociateAddress",
+          "ec2:DescribeAddresses",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret",
+        ]
+        Resource = var.use_secrets_manager ? [aws_secretsmanager_secret.emqx[0].arn] : []
+      },
     ]
   })
 }

@@ -17,25 +17,15 @@ $coreIp = terraform output -raw emqx_core_public_ip
 $mqttHost = terraform output -raw mqtt_nlb_dns_name
 $asgName = terraform output -raw replicant_asg_name
 
-if (-not $DashboardPassword) {
-    $tfvars = Join-Path $Root "terraform.tfvars"
-    if (Test-Path $tfvars) {
-        $tfvarsText = Get-Content -Raw $tfvars
-        if ($tfvarsText -match 'emqx_dashboard_password\s*=\s*"([^"]*)"') {
-            $DashboardPassword = $Matches[1]
-        } elseif ($tfvarsText -match "emqx_dashboard_password\s*=\s*'([^']*)'") {
-            $DashboardPassword = $Matches[1]
-        }
-    }
-}
-if ([string]::IsNullOrWhiteSpace($DashboardPassword)) {
-    $plain = Read-Host "EMQX dashboard password (from terraform.tfvars)"
-    if (-not [string]::IsNullOrWhiteSpace($plain)) {
-        $DashboardPassword = $plain
-    }
-}
-if ([string]::IsNullOrWhiteSpace($DashboardPassword)) {
+$creds = Resolve-EmqxCredentials -ProjectRoot $Root -Region $Region `
+    -DashboardPassword $DashboardPassword -DashboardUser $DashboardUser
+Set-EmqxCredentialEnvironment -Credentials $creds
+$DashboardPassword = $creds.DashboardPassword
+$DashboardUser = $creds.DashboardUsername
+
+if (-not (Test-EmqxCredentialsPresent -Credentials $creds)) {
     Write-Host "Password required. Use one of:" -ForegroundColor Yellow
+    Write-Host "  AWS Secrets Manager (use_secrets_manager=true + terraform apply)"
     Write-Host '  $env:EMQX_DASHBOARD_PASSWORD = "your-password"'
     Write-Host '  ./scripts/prove_emqx_cluster.ps1 -DashboardPassword "your-password"'
     exit 1
@@ -46,12 +36,9 @@ Install-PythonRequirements -ProjectRoot $Root | Out-Null
 $env:EMQX_CORE_IP = $coreIp
 $env:MQTT_HOST = $mqttHost
 $env:ASG_NAME = $asgName
-$env:EMQX_DASHBOARD_USERNAME = $DashboardUser
-$env:EMQX_DASHBOARD_PASSWORD = $DashboardPassword
 $env:AWS_REGION = $Region
 $env:PROJECT_NAME = $ProjectName
 
-# Pass password via env only (avoids special-character breakage on CLI).
 $argsList = @(
     (Join-MultiplePath @($Root, "scripts", "prove_emqx_cluster.py")),
     "--region", $Region,

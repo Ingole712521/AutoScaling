@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import paho.mqtt.client as mqtt
 
-from mqtt_common import connack_ok
+from mqtt_common import apply_mqtt_credentials, connack_ok
 
 
 @dataclass(frozen=True)
@@ -57,6 +57,8 @@ class LoadClient(threading.Thread):
         error_samples: list[str],
         error_lock: threading.Lock,
         conn_only: bool = False,
+        username: str | None = None,
+        password: str | None = None,
     ) -> None:
         super().__init__(daemon=True)
         self.host = host
@@ -71,6 +73,8 @@ class LoadClient(threading.Thread):
         self.error_samples = error_samples
         self.error_lock = error_lock
         self.conn_only = conn_only
+        self.username = username
+        self.password = password
         self.published = 0
         self.errors = 0
         self.connected = False
@@ -94,6 +98,7 @@ class LoadClient(threading.Thread):
             client_id=self.client_id,
             protocol=mqtt.MQTTv311,
         )
+        apply_mqtt_credentials(client, self.username, self.password)
         client.on_connect = on_connect
 
         try:
@@ -143,7 +148,14 @@ class LoadClient(threading.Thread):
                 pass
 
 
-def probe_broker(host: str, port: int, topic: str, timeout_sec: float) -> bool:
+def probe_broker(
+    host: str,
+    port: int,
+    topic: str,
+    timeout_sec: float,
+    username: str | None = None,
+    password: str | None = None,
+) -> bool:
     ready = threading.Event()
     state = {"rc": None}
 
@@ -156,6 +168,7 @@ def probe_broker(host: str, port: int, topic: str, timeout_sec: float) -> bool:
         client_id=f"preflight-{int(time.time())}",
         protocol=mqtt.MQTTv311,
     )
+    apply_mqtt_credentials(client, username, password)
     client.on_connect = on_connect
     try:
         client.connect(host, port, keepalive=30)
@@ -280,6 +293,8 @@ def run_until_stopped(
             error_samples=error_samples,
             error_lock=error_lock,
             conn_only=conn_only,
+            username=os.environ.get("MQTT_USERNAME") or None,
+            password=os.environ.get("MQTT_PASSWORD") or None,
         )
         threads.append(worker)
         worker.start()
@@ -360,6 +375,8 @@ def run_stage(
             connect_timeout_sec=connect_timeout_sec,
             error_samples=error_samples,
             error_lock=error_lock,
+            username=os.environ.get("MQTT_USERNAME") or None,
+            password=os.environ.get("MQTT_PASSWORD") or None,
         )
         threads.append(worker)
         worker.start()
@@ -439,7 +456,11 @@ def main() -> int:
     print(f"Target NLB: {args.host}:{args.port}")
     if args.asg_name:
         log_asg_capacity(args.asg_name, args.aws_region, "before load test")
-    if not args.skip_preflight and not probe_broker(args.host, args.port, args.topic, args.connect_timeout):
+    mqtt_user = os.environ.get("MQTT_USERNAME") or None
+    mqtt_pass = os.environ.get("MQTT_PASSWORD") or None
+    if not args.skip_preflight and not probe_broker(
+        args.host, args.port, args.topic, args.connect_timeout, mqtt_user, mqtt_pass
+    ):
         return 1
 
     stop = threading.Event()

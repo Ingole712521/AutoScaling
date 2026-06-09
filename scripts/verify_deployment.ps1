@@ -26,6 +26,8 @@ Write-Host ("MQTT NLB 1883:   {0}" -f $(if ($mqttOpen) { "PASS" } else { "FAIL" 
 
 if ($mqttOpen -and (Get-PythonExecutable)) {
     Install-PythonRequirements -ProjectRoot $Root | Out-Null
+    $creds = Resolve-EmqxCredentials -ProjectRoot $Root -Region $Region
+    Set-EmqxCredentialEnvironment -Credentials $creds
     Invoke-ProjectPython -ProjectRoot $Root scripts/mqtt_probe.py --host $mqttHost
 }
 
@@ -53,6 +55,10 @@ if (Get-Command aws -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
+Write-Host "Cluster:   ./scripts/watch_cluster_nodes.ps1 (live node list — faster than dashboard UI)" -ForegroundColor Cyan
+Write-Host "Full suite: ./scripts/run_validation_suite.ps1 (all validation in one run)" -ForegroundColor Cyan
+Write-Host "Auth:      ./scripts/validate_authentication.ps1 (MQTT username/password + 2K load)" -ForegroundColor Cyan
+Write-Host "Security:  ./scripts/validate_security.ps1 (SG rules, ports, TLS/ACM)" -ForegroundColor Cyan
 Write-Host "Full proof: ./scripts/prove_emqx_cluster.ps1 (or ./scripts/prove_emqx_cluster.sh)" -ForegroundColor Cyan
 
 if ($dashboardOpen -and $mqttOpen) { exit 0 }

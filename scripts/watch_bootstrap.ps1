@@ -23,7 +23,7 @@ function Get-CoreInstanceId {
 
     $instanceId = aws ec2 describe-instances `
         --region $AwsRegion `
-        --filters "Name=tag:Name,Values=${Project}-core-1" "Name=instance-state-name,Values=running" `
+        --filters "Name=tag:Name,Values=${Project}-core,${Project}-core-1" "Name=instance-state-name,Values=running" `
         --query "Reservations[0].Instances[0].InstanceId" `
         --output text 2>$null
 

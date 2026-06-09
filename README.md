@@ -444,6 +444,12 @@ terraform output -raw replicant_asg_name
 | Quick verify | `pwsh -File ./scripts/verify_deployment.ps1` | Dashboard + MQTT ports, NLB target health, MQTT probe |
 | MQTT probe only | `pwsh -File ./scripts/verify_deployment.ps1` (includes probe) or run via staged load preflight | Single publish via NLB |
 | Full proof | `pwsh -File ./scripts/prove_emqx_cluster.ps1 -DashboardPassword "YOUR_PASSWORD"` | Cluster API, NLB, load spread, ASG |
+| Security validation | `pwsh -File ./scripts/validate_security.ps1` | Security groups, ports 1883/8883/18083, TLS/ACM |
+| Authentication validation | `pwsh -File ./scripts/validate_authentication.ps1` | Username/password auth, 2K load, latency metrics |
+| Auth during scale-out | `pwsh -File ./scripts/validate_auth_scale_out.ps1` | Auth stable while core + replicant ASGs scale |
+| **Full validation suite** | `pwsh -File ./scripts/run_validation_suite.ps1` | **All checks in one run** |
+
+See [docs/security-validation.md](docs/security-validation.md) for security group layout, MQTT over TLS, and ACM setup.
 
 Password can also be set via environment:
 

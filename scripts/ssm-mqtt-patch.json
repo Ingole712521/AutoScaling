@@ -2,15 +2,25 @@
   "commands": [
     "set -euo pipefail",
     "ENV=/etc/emqx/terraform.env",
+    "MQTT_USER=\"${mqtt_user}\"",
+    "MQTT_PASS=\"${mqtt_password}\"",
+    "DASH_USER=\"${dashboard_user}\"",
+    "DASH_PASS=\"${dashboard_password}\"",
     "install -d /etc/systemd/system/emqx.service.d",
     "test -f /etc/systemd/system/emqx.service.d/terraform.conf || printf '%s\\n' '[Service]' 'EnvironmentFile=-/etc/emqx/terraform.env' > /etc/systemd/system/emqx.service.d/terraform.conf",
     "touch \"$ENV\"",
-    "grep -q 'ENABLE_AUTHN=false' \"$ENV\" || echo 'EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN=false' >> \"$ENV\"",
+    "grep -q 'ENABLE_AUTHN=true' \"$ENV\" || sed -i '/ENABLE_AUTHN=/d' \"$ENV\"; echo 'EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN=true' >> \"$ENV\"",
+    "grep -q 'AUTHENTICATION__1__MECHANISM' \"$ENV\" || echo 'EMQX_AUTHENTICATION__1__MECHANISM=password_based' >> \"$ENV\"",
+    "grep -q 'AUTHENTICATION__1__BACKEND' \"$ENV\" || echo 'EMQX_AUTHENTICATION__1__BACKEND=built_in_database' >> \"$ENV\"",
+    "grep -q 'AUTHENTICATION__1__ENABLE' \"$ENV\" || echo 'EMQX_AUTHENTICATION__1__ENABLE=true' >> \"$ENV\"",
     "grep -q 'MAX_PACKET_SIZE' \"$ENV\" || echo 'EMQX_MQTT__MAX_PACKET_SIZE=1MB' >> \"$ENV\"",
     "systemctl daemon-reload",
     "systemctl restart emqx",
-    "sleep 8",
+    "sleep 12",
+    "TOKEN=$(curl -sf -X POST http://127.0.0.1:18083/api/v5/login -H 'Content-Type: application/json' -d \"{\\\"username\\\":\\\"$DASH_USER\\\",\\\"password\\\":\\\"$DASH_PASS\\\"}\" | python3 -c \"import sys,json; print(json.load(sys.stdin).get('token',''))\")",
+    "test -n \"$TOKEN\"",
+    "curl -sf -X POST \"http://127.0.0.1:18083/api/v5/authentication/password_based%3Abuilt_in_database/users\" -H \"Authorization: Bearer $TOKEN\" -H 'Content-Type: application/json' -d \"{\\\"user_id\\\":\\\"$MQTT_USER\\\",\\\"password\\\":\\\"$MQTT_PASS\\\"}\" || true",
     "ss -tln | grep ':1883'",
-    "echo MQTT_PATCH_OK"
+    "echo MQTT_AUTH_PATCH_OK"
   ]
 }

@@ -52,14 +52,49 @@ variable "dashboard_allowed_cidr" {
   default     = "0.0.0.0/0"
 }
 
+variable "enable_mqtt_tls" {
+  description = "Enable MQTT over TLS on NLB port 8883 with ACM certificate termination."
+  type        = bool
+  default     = false
+}
+
+variable "acm_certificate_arn" {
+  description = "ACM certificate ARN for the NLB TLS listener (:8883). Required when enable_mqtt_tls is true. Certificate must be issued in the same region as the NLB."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.enable_mqtt_tls == false || (var.acm_certificate_arn != null && var.acm_certificate_arn != "")
+    error_message = "acm_certificate_arn is required when enable_mqtt_tls is true."
+  }
+}
+
+variable "mqtt_tls_ssl_policy" {
+  description = "AWS SSL policy for the NLB TLS listener on port 8883."
+  type        = string
+  default     = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+}
+
 variable "ssh_allowed_cidr" {
   description = "CIDR allowed to access SSH on port 22."
   type        = string
   default     = "0.0.0.0/0"
 }
 
+variable "use_secrets_manager" {
+  description = "Store EMQX credentials in AWS Secrets Manager; EC2 bootstrap and scripts read from there (not user_data)."
+  type        = bool
+  default     = true
+}
+
+variable "secrets_manager_secret_name" {
+  description = "Secrets Manager secret name for EMQX credentials. Default: {project_name}/emqx"
+  type        = string
+  default     = ""
+}
+
 variable "emqx_node_cookie" {
-  description = "Shared Erlang cookie for EMQX cluster nodes."
+  description = "Shared Erlang cookie for EMQX cluster nodes. Written to Secrets Manager when use_secrets_manager=true."
   type        = string
   sensitive   = true
 }
@@ -74,6 +109,30 @@ variable "emqx_dashboard_password" {
   description = "Dashboard admin password."
   type        = string
   sensitive   = true
+}
+
+variable "emqx_mqtt_enable_authn" {
+  description = "Require username/password for MQTT connections on port 1883."
+  type        = bool
+  default     = true
+}
+
+variable "emqx_mqtt_username" {
+  description = "MQTT username for built-in database authentication."
+  type        = string
+  default     = "mqtt_user"
+}
+
+variable "emqx_mqtt_password" {
+  description = "MQTT password for built-in database authentication."
+  type        = string
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = var.emqx_mqtt_enable_authn ? length(var.emqx_mqtt_password) > 0 : true
+    error_message = "emqx_mqtt_password is required when emqx_mqtt_enable_authn is true (initial Secrets Manager value or user_data)."
+  }
 }
 
 variable "emqx_version" {
@@ -112,6 +171,36 @@ variable "emqx_tune_dist_buffer_size_kb" {
   default     = 2097151
 }
 
+variable "core_min_size" {
+  description = "Minimum EMQX core nodes in the core ASG."
+  type        = number
+  default     = 1
+}
+
+variable "core_desired_capacity" {
+  description = "Desired EMQX core nodes in the core ASG."
+  type        = number
+  default     = 1
+}
+
+variable "core_max_size" {
+  description = "Maximum EMQX core nodes in the core ASG."
+  type        = number
+  default     = 2
+}
+
+variable "core_scale_out_cpu_threshold" {
+  description = "Scale out (+1) core ASG when average CPU exceeds this percent."
+  type        = number
+  default     = 20
+}
+
+variable "core_scale_in_cpu_threshold" {
+  description = "Scale in (-1) core ASG when average CPU stays below this percent."
+  type        = number
+  default     = 5
+}
+
 variable "replicant_min_size" {
   description = "Minimum replicant nodes in ASG."
   type        = number
@@ -146,6 +235,24 @@ variable "scale_out_network_evaluation_periods" {
   description = "Consecutive 60s periods network must exceed threshold before scale-out. Use 2+ to ignore brief bootstrap spikes."
   type        = number
   default     = 2
+}
+
+variable "asg_health_check_grace_period" {
+  description = "Seconds before ASG health checks affect new instances (must cover bootstrap; lower = faster NLB/ASG visibility)."
+  type        = number
+  default     = 300
+}
+
+variable "asg_instance_warmup_sec" {
+  description = "Instance warmup for ASG rolling refresh (seconds)."
+  type        = number
+  default     = 300
+}
+
+variable "emqx_cluster_autoclean" {
+  description = "Remove disconnected cluster nodes from the dashboard after this duration (e.g. 2m, 5m). Default EMQX is 24h."
+  type        = string
+  default     = "2m"
 }
 
 variable "autoscaling_cooldown_sec" {

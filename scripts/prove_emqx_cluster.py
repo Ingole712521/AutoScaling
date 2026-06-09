@@ -25,7 +25,7 @@ import paho.mqtt.client as mqtt
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "loadtest"))
-from mqtt_common import connack_ok  # noqa: E402
+from mqtt_common import apply_mqtt_credentials, connack_ok  # noqa: E402
 
 
 @dataclass
@@ -228,6 +228,8 @@ def mqtt_load_clients(
     count: int,
     topic: str,
     before_release: Callable[[], None] | None = None,
+    username: str | None = None,
+    password: str | None = None,
 ) -> tuple[int, int]:
     """Connect count clients with stagger; return (ok, fail)."""
     ok = 0
@@ -250,6 +252,7 @@ def mqtt_load_clients(
             client_id=f"prove-{i}-{int(time.time())}",
             protocol=mqtt.MQTTv311,
         )
+        apply_mqtt_credentials(c, username, password)
         c.on_connect = on_connect
         try:
             time.sleep(i * 0.1)
@@ -327,7 +330,13 @@ def check_load_balance(
     report.add("Load spread across nodes", spread_ok, "\n".join(lines))
 
 
-def check_mqtt_probe(report: ProofReport, host: str, port: int) -> bool:
+def check_mqtt_probe(
+    report: ProofReport,
+    host: str,
+    port: int,
+    username: str | None = None,
+    password: str | None = None,
+) -> bool:
     ready = threading.Event()
     rc_box: list[object] = [None]
 
@@ -336,6 +345,7 @@ def check_mqtt_probe(report: ProofReport, host: str, port: int) -> bool:
         ready.set()
 
     c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="prove-probe", protocol=mqtt.MQTTv311)
+    apply_mqtt_credentials(c, username, password)
     c.on_connect = on_connect
     try:
         c.connect(host, port, 30)
@@ -344,7 +354,7 @@ def check_mqtt_probe(report: ProofReport, host: str, port: int) -> bool:
             report.add("MQTT via NLB", False, "CONNACK timeout")
             return False
         if not connack_ok(rc_box[0]):
-            report.add("MQTT via NLB", False, f"CONNACK={rc_box[0]} — enable anonymous MQTT on brokers")
+            report.add("MQTT via NLB", False, f"CONNACK={rc_box[0]} — check MQTT credentials or auth config")
             return False
         c.publish("loadtest/prove", "{}", qos=0)
         time.sleep(0.5)
@@ -373,7 +383,12 @@ def main() -> int:
     p.add_argument("--dashboard-password", default=os.environ.get("EMQX_DASHBOARD_PASSWORD", ""))
     p.add_argument("--load-clients", type=int, default=50, help="Clients for load-spread test (use 50+ when ASG has 2+ nodes)")
     p.add_argument("--skip-load", action="store_true")
+    p.add_argument("--mqtt-username", default=os.environ.get("MQTT_USERNAME", ""))
+    p.add_argument("--mqtt-password", default=os.environ.get("MQTT_PASSWORD", ""))
     args = p.parse_args()
+
+    mqtt_user = args.mqtt_username or None
+    mqtt_pass = args.mqtt_password or None
 
     if not args.mqtt_host or not args.core_ip:
         print("Set --mqtt-host and --core-ip (or MQTT_HOST / EMQX_CORE_IP)", file=sys.stderr)
@@ -392,7 +407,7 @@ def main() -> int:
     check_nlb_targets(report, args.region, args.project)
     check_asg(report, args.region, asg)
 
-    if not check_mqtt_probe(report, args.mqtt_host, args.mqtt_port):
+    if not check_mqtt_probe(report, args.mqtt_host, args.mqtt_port, mqtt_user, mqtt_pass):
         print("\n=== SUMMARY: FAILED (fix MQTT before load test) ===")
         return 1
 
@@ -430,6 +445,8 @@ def main() -> int:
             args.load_clients,
             "loadtest/prove",
             before_release=capture_load_snapshot,
+            username=mqtt_user,
+            password=mqtt_pass,
         )
         report.add(
             "MQTT load clients",
@@ -464,7 +481,7 @@ def main() -> int:
     failed = [r.name for r in report.results if not r.passed]
     print("Failed:", ", ".join(failed))
     print("\nFix order:")
-    print("  1. powershell -File scripts/fix_mqtt_anonymous_ssm.ps1")
+    print("  1. powershell -File scripts/fix_mqtt_anonymous_ssm.ps1  # enable MQTT auth on running nodes")
     print("  2. terraform apply")
     print("  3. aws autoscaling start-instance-refresh --auto-scaling-group-name", asg)
     return 1

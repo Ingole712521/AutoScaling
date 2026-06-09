@@ -10,6 +10,10 @@ emqx_tune_max_connections     = 1024000
 emqx_tune_dist_buffer_size_kb = 2097151
 use_secrets_manager     = true
 # secrets_manager_secret_name = "emqx-prod/emqx"  # optional; default is {project_name}/emqx
+enable_grafana          = true
+grafana_admin_username  = "admin"
+grafana_admin_password  = "ChangeMe!GrafanaPassword"
+# grafana_allowed_cidr  = "0.0.0.0/0"  # empty = same as dashboard_allowed_cidr
 emqx_node_cookie        = "ChangeThisCookieForProduction"
 emqx_dashboard_username = "admin"
 emqx_dashboard_password = "ChangeMe!StrongPassword"

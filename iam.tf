@@ -23,6 +23,11 @@ resource "aws_iam_role_policy_attachment" "emqx_ec2_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy_attachment" "emqx_ec2_cloudwatch_agent" {
+  role       = aws_iam_role.emqx_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 resource "aws_iam_role_policy" "emqx_ec2_ssm_cluster" {
   name = "${var.project_name}-ec2-ssm-cluster"
   role = aws_iam_role.emqx_ec2.id

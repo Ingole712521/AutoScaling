@@ -54,6 +54,14 @@ if (Get-Command aws -ErrorAction SilentlyContinue) {
     }
 }
 
+try {
+    $grafanaUrl = terraform output -raw grafana_url 2>$null
+    if ($grafanaUrl -and $grafanaUrl -ne "null") {
+        Write-Host ""
+        Write-Host "Grafana:   $grafanaUrl (CPU/memory — login from Secrets Manager)" -ForegroundColor Cyan
+    }
+} catch { }
+
 Write-Host ""
 Write-Host "Cluster:   ./scripts/watch_cluster_nodes.ps1 (live node list — faster than dashboard UI)" -ForegroundColor Cyan
 Write-Host "Full suite: ./scripts/run_validation_suite.ps1 (all validation in one run)" -ForegroundColor Cyan

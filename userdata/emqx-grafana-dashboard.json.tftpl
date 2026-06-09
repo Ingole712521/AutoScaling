@@ -1,0 +1,279 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Auto Scaling capacity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+        "dimensions": { "AutoScalingGroupName": "${core_asg_name}" },
+        "metricName": "GroupDesiredCapacity",
+        "namespace": "AWS/AutoScaling",
+        "period": "60",
+        "queryMode": "Metrics",
+        "refId": "A",
+        "region": "${region}",
+        "statistic": "Average"
+      }],
+      "title": "Core desired",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+        "dimensions": { "AutoScalingGroupName": "${core_asg_name}" },
+        "metricName": "GroupInServiceInstances",
+        "namespace": "AWS/AutoScaling",
+        "period": "60",
+        "queryMode": "Metrics",
+        "refId": "A",
+        "region": "${region}",
+        "statistic": "Average"
+      }],
+      "title": "Core in-service",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+        "dimensions": { "AutoScalingGroupName": "${replicant_asg_name}" },
+        "metricName": "GroupDesiredCapacity",
+        "namespace": "AWS/AutoScaling",
+        "period": "60",
+        "queryMode": "Metrics",
+        "refId": "A",
+        "region": "${region}",
+        "statistic": "Average"
+      }],
+      "title": "Replicants desired",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+        "dimensions": { "AutoScalingGroupName": "${replicant_asg_name}" },
+        "metricName": "GroupInServiceInstances",
+        "namespace": "AWS/AutoScaling",
+        "period": "60",
+        "queryMode": "Metrics",
+        "refId": "A",
+        "region": "${region}",
+        "statistic": "Average"
+      }],
+      "title": "Replicants in-service",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "CPU utilization",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "dimensions": { "AutoScalingGroupName": "${core_asg_name}" },
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/EC2",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "${region}",
+          "statistic": "Average",
+          "label": "Core ASG avg"
+        },
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "expression": "SEARCH('{AWS/EC2,InstanceId} MetricName=\"CPUUtilization\"', 'Average', 60)",
+          "id": "core_cpu",
+          "matchExact": true,
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/EC2",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "B",
+          "region": "${region}",
+          "statistic": "Average",
+          "label": "Per instance"
+        }
+      ],
+      "title": "Core — CPU %",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "dimensions": { "AutoScalingGroupName": "${replicant_asg_name}" },
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/EC2",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "${region}",
+          "statistic": "Average",
+          "label": "Replicants ASG avg"
+        },
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "expression": "SEARCH('{AWS/EC2,InstanceId} MetricName=\"CPUUtilization\"', 'Average', 60)",
+          "id": "rep_cpu",
+          "matchExact": true,
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/EC2",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "B",
+          "region": "${region}",
+          "statistic": "Average",
+          "label": "Per instance"
+        }
+      ],
+      "title": "Replicants — CPU %",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Memory (CloudWatch Agent on EMQX nodes)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "id": 20,
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+        "expression": "SEARCH('{CWAgent,InstanceId} MetricName=\"mem_used_percent\"', 'Average', 60)",
+        "id": "mem",
+        "matchExact": true,
+        "metricName": "mem_used_percent",
+        "namespace": "CWAgent",
+        "period": "60",
+        "queryMode": "Metrics",
+        "refId": "A",
+        "region": "${region}",
+        "statistic": "Average"
+      }],
+      "title": "Memory used % — all EMQX instances (auto-discovered)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "MQTT NLB traffic",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "id": 30,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "dimensions": { "LoadBalancer": "${nlb_arn_suffix}" },
+          "metricName": "ActiveFlowCount",
+          "namespace": "AWS/NetworkELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "${region}",
+          "statistic": "Average"
+        },
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "dimensions": { "LoadBalancer": "${nlb_arn_suffix}" },
+          "metricName": "NewFlowCount",
+          "namespace": "AWS/NetworkELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "B",
+          "region": "${region}",
+          "statistic": "Sum"
+        },
+        {
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "dimensions": { "LoadBalancer": "${nlb_arn_suffix}" },
+          "metricName": "ProcessedBytes",
+          "namespace": "AWS/NetworkELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "C",
+          "region": "${region}",
+          "statistic": "Sum"
+        }
+      ],
+      "title": "NLB flows & throughput",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["emqx", "${project_name}"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "EMQX Cluster — ${project_name}",
+  "uid": "emqx-cluster-${project_name}",
+  "version": 1
+}

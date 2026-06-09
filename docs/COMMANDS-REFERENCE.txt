@@ -12,6 +12,7 @@ Python       : auto .venv/ on first script run (all OS)
 Dashboard    : http://<CORE_IP>:18083  (admin + password from Secrets Manager or terraform.tfvars)
 MQTT clients : tcp://<NLB_DNS>:1883     (NOT dashboard port)
 Secrets      : use_secrets_manager=true (default) — see docs/secrets-manager.md
+Grafana      : terraform output -raw grafana_url  — see docs/grafana-monitoring.md
 
 ================================================================================
 A) COMPLETE DEMO — RUN IN THIS ORDER (WHEN + WHERE + COMMAND)

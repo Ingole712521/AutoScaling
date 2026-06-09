@@ -53,6 +53,21 @@ output "secrets_manager_secret_arn" {
   value       = var.use_secrets_manager ? aws_secretsmanager_secret.emqx[0].arn : null
 }
 
+output "grafana_url" {
+  description = "Grafana monitoring dashboard URL (CPU/memory for all EMQX instances)."
+  value       = var.enable_grafana ? "http://${aws_eip.grafana_eip[0].public_ip}:3000" : null
+}
+
+output "grafana_public_ip" {
+  description = "Public IP of the Grafana monitoring instance."
+  value       = var.enable_grafana ? aws_eip.grafana_eip[0].public_ip : null
+}
+
+output "grafana_secret_name" {
+  description = "AWS Secrets Manager secret name for Grafana admin login."
+  value       = var.enable_grafana && var.use_secrets_manager ? aws_secretsmanager_secret.grafana[0].name : null
+}
+
 output "mqtt_tls_broker_url" {
   description = "MQTT over TLS endpoint (NLB terminates TLS with ACM). Empty when TLS is disabled."
   value       = var.enable_mqtt_tls ? "ssl://${aws_lb.mqtt_nlb.dns_name}:8883" : ""
@@ -87,6 +102,7 @@ output "access_summary" {
   description = "Quick reference for URLs, ports, and firewall rules after deploy."
   value = {
     dashboard_url          = "http://${aws_eip.core_eip.public_ip}:18083"
+    grafana_url            = var.enable_grafana ? "http://${aws_eip.grafana_eip[0].public_ip}:3000" : ""
     mqtt_nlb               = "${aws_lb.mqtt_nlb.dns_name}:1883"
     core_public_ip         = aws_eip.core_eip.public_ip
     dashboard_port         = 18083

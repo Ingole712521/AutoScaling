@@ -285,6 +285,43 @@ variable "scale_in_cpu_threshold" {
   default     = 5
 }
 
+variable "enable_grafana" {
+  description = "Deploy a Grafana EC2 instance with CloudWatch dashboards for EMQX CPU/memory."
+  type        = bool
+  default     = true
+}
+
+variable "grafana_instance_type" {
+  description = "EC2 instance type for the Grafana monitoring server."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "grafana_allowed_cidr" {
+  description = "CIDR allowed to access Grafana on port 3000. Empty = same as dashboard_allowed_cidr."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_admin_username" {
+  description = "Grafana admin username. Stored in Secrets Manager when use_secrets_manager=true."
+  type        = string
+  default     = "admin"
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password. Stored in Secrets Manager when use_secrets_manager=true."
+  type        = string
+  sensitive   = true
+  default     = "ChangeMe!GrafanaPassword"
+}
+
+variable "grafana_secrets_manager_secret_name" {
+  description = "Secrets Manager secret name for Grafana login. Default: {project_name}/grafana"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Common tags applied to all resources."
   type        = map(string)

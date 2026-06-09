@@ -26,3 +26,28 @@ resource "aws_secretsmanager_secret_version" "emqx" {
     ignore_changes = [secret_string]
   }
 }
+
+resource "aws_secretsmanager_secret" "grafana" {
+  count = var.enable_grafana && var.use_secrets_manager ? 1 : 0
+
+  name        = var.grafana_secrets_manager_secret_name != "" ? var.grafana_secrets_manager_secret_name : "${var.project_name}/grafana"
+  description = "Grafana admin credentials"
+
+  tags = merge(var.tags, {
+    Name = "${var.project_name}-grafana-secrets"
+  })
+}
+
+resource "aws_secretsmanager_secret_version" "grafana" {
+  count = var.enable_grafana && var.use_secrets_manager ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.grafana[0].id
+  secret_string = jsonencode({
+    admin_username = var.grafana_admin_username
+    admin_password = var.grafana_admin_password
+  })
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

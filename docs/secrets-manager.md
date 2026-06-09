@@ -4,7 +4,12 @@ EMQX credentials are stored in **AWS Secrets Manager** by default (`use_secrets_
 
 ## Secret contents
 
-Secret name: `{project_name}/emqx` (e.g. `emqx-prod/emqx`)
+| Secret | Name | Contents |
+|--------|------|----------|
+| EMQX | `{project_name}/emqx` | Cookie, dashboard, MQTT credentials |
+| Grafana | `{project_name}/grafana` | `admin_username`, `admin_password` (when `enable_grafana=true`) |
+
+EMQX secret example:
 
 ```json
 {

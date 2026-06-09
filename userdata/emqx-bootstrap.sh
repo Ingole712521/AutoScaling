@@ -54,9 +54,59 @@ fail() {
 }
 
 install_packages() {
-  log "STEP 1/10: Installing system packages"
+  log "STEP 1/11: Installing system packages"
   apt-get update -y
   apt-get install -y curl gnupg apt-transport-https ca-certificates lsb-release awscli netcat-openbsd jq
+}
+
+install_cloudwatch_agent() {
+  log "STEP 2/11: Installing CloudWatch Agent (memory metrics for Grafana)"
+  if dpkg -s amazon-cloudwatch-agent >/dev/null 2>&1; then
+    log "CloudWatch Agent already installed"
+    return 0
+  fi
+
+  wget -q -O /tmp/amazon-cloudwatch-agent.deb \
+    https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+  dpkg -i /tmp/amazon-cloudwatch-agent.deb
+  rm -f /tmp/amazon-cloudwatch-agent.deb
+
+  cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCFG'
+{
+  "metrics": {
+    "append_dimensions": {
+      "AutoScalingGroupName": "$${aws:AutoScalingGroupName}",
+      "InstanceId": "$${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "mem": {
+        "measurement": [
+          "mem_used_percent"
+        ]
+      },
+      "disk": {
+        "measurement": [
+          "used_percent"
+        ],
+        "resources": [
+          "/"
+        ],
+        "ignore_file_system_types": [
+          "tmpfs",
+          "devtmpfs",
+          "squashfs"
+        ]
+      }
+    }
+  }
+}
+CWCFG
+
+  /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config -m ec2 \
+    -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+    -s
+  log "CloudWatch Agent started (mem_used_percent -> CWAgent namespace)"
 }
 
 load_credentials_from_secrets_manager() {
@@ -95,12 +145,12 @@ load_credentials_from_secrets_manager() {
 }
 
 apply_performance_tuning() {
-  log "STEP 2/10: OS + network performance tuning (EMQX docs)"
+  log "STEP 3/11: OS + network performance tuning (EMQX docs)"
   apply_emqx_performance_tuning "$NODE_ROLE"
 }
 
 install_emqx() {
-  log "STEP 3/10: Installing EMQX $EMQX_VERSION (DEB -> $EMQX_ETC)"
+  log "STEP 4/11: Installing EMQX $EMQX_VERSION (DEB -> $EMQX_ETC)"
   curl -fsSL https://assets.emqx.com/scripts/install-emqx-deb.sh | bash
   apt-get update -y
 
@@ -184,7 +234,7 @@ associate_core_eip() {
 
 wait_for_core() {
   local core_ip="$1"
-  log "STEP 4/10: Waiting for core node $core_ip (ports 5369/4370)"
+  log "STEP 5/11: Waiting for core node $core_ip (ports 5369/4370)"
   for attempt in $(seq 1 60); do
     if nc -z "$core_ip" 5369 2>/dev/null || nc -z "$core_ip" 4370 2>/dev/null; then
       log "Core node is reachable on attempt $attempt"
@@ -200,7 +250,7 @@ write_emqx_env() {
   local private_ip="$1"
   local seeds_hocon="$2"
 
-  log "STEP 5/10: Writing EMQX 5.8 overrides to $EMQX_ENV_FILE"
+  log "STEP 6/11: Writing EMQX 5.8 overrides to $EMQX_ENV_FILE"
 
   install -d "$SYSTEMD_DROPIN"
 
@@ -247,7 +297,7 @@ EOF
 }
 
 start_emqx() {
-  log "STEP 6/10: Starting EMQX via systemd"
+  log "STEP 7/11: Starting EMQX via systemd"
   systemctl daemon-reload
   systemctl enable emqx
   systemctl restart emqx
@@ -255,7 +305,7 @@ start_emqx() {
 
 wait_for_ports() {
   local require_dashboard="$1"
-  log "STEP 7/10: Waiting for EMQX listeners"
+  log "STEP 8/11: Waiting for EMQX listeners"
 
   for attempt in $(seq 1 40); do
     local mqtt_up=0
@@ -287,7 +337,7 @@ wait_for_ports() {
 }
 
 validate_emqx_service() {
-  log "STEP 8/10: Validating EMQX service"
+  log "STEP 9/11: Validating EMQX service"
   for attempt in $(seq 1 20); do
     if systemctl is-active --quiet emqx 2>/dev/null; then
       local status_out
@@ -313,7 +363,7 @@ count_cluster_nodes() {
 }
 
 validate_cluster() {
-  log "STEP 9/10: Validating cluster membership"
+  log "STEP 10/11: Validating cluster membership"
   local status_output
   status_output="$(/usr/bin/emqx ctl cluster status 2>&1 | tee -a "$LOG")"
 
@@ -378,7 +428,7 @@ ensure_mqtt_user() {
 }
 
 mark_ready() {
-  log "STEP 10/10: Bootstrap complete"
+  log "STEP 11/11: Bootstrap complete"
   date -Is > "$OK_MARKER"
   log "READY: role=$NODE_ROLE node=emqx@$PRIVATE_IP"
 }
@@ -389,6 +439,7 @@ main() {
 
   log "Bootstrap started (role=$NODE_ROLE, EMQX $EMQX_VERSION)"
   install_packages
+  install_cloudwatch_agent
   load_credentials_from_secrets_manager
   apply_performance_tuning
   install_emqx
